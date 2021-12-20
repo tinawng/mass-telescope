@@ -8,9 +8,9 @@ const ethscan = got.extend({ prefixUrl: "https://etherscan.io/tx/", resolveBodyO
 const web3_api = got.extend({ prefixUrl: "https://node1.web3api.com/", responseType: 'json', resolveBodyOnly: true });
 const tanabata_api = got.extend({ prefixUrl: "https://tanabata.tina.cafe/pak/merges", headers: { secret: process.env.TANABATA_SECRET }, responseType: 'json', resolveBodyOnly: true });
 
-// Parsing all tokens: 130 * 223 = 28,990
+// ⚫️ Parsing all tokens: 130 * 223 = 28,990
 for (let chunk = 0; chunk < 130; chunk++) {
-    // Making url list for // request exec
+    // ⚡️ Making url list for // request exec
     let urls = []
     for (let i = 1; i <= 223; i++) {
         let hex = (223 * chunk + i).toString(16);
@@ -18,13 +18,13 @@ for (let chunk = 0; chunk < 130; chunk++) {
         urls.push(web3_api.post('', { json: { "jsonrpc": "2.0", "id": (223 * chunk + i), "method": "eth_call", "params": [{ "from": "0x0000000000000000000000000000000000000000", "data": b32, "to": merge_contract }, "latest"] }, headers: { referer: 'etherscan.io' } }).json());
     }
 
-    // Store api responses
+    // 🗃️ Store api responses
     console.time(`tokens   ${chunk}`);
     let tokens = await Promise.all(urls);
     console.timeEnd(`tokens   ${chunk}`);
 
     console.time(`metadata ${chunk}`);
-    // Parse api responses and create token object (+ some extra infos)
+    // 🔍️ Parse api responses and create token object (+ some extra infos)
     for (let i = 0; i < tokens.length; i++) {
         const api_resp = tokens[i];
 
@@ -32,9 +32,9 @@ for (let chunk = 0; chunk < 130; chunk++) {
             var b64json = byte32ToString(api_resp.result).split('json;base64,')[1];
         }
         else {
-            // This is a merged token
+            // 💫 This is a merged token
             try {
-                // Get transaction price & transaction hash
+                // 📄 Get transaction price & transaction hash
                 let { token_metadata, last_sale } = await os_api(`asset/${merge_contract}/${api_resp.id.toString()}`).json();
                 var b64json = token_metadata.split('json;base64,')[1];
 
@@ -43,25 +43,17 @@ for (let chunk = 0; chunk < 130; chunk++) {
                     var sale_price = last_sale.total_price / 10e17;
                     let transaction_hash = last_sale.transaction.transaction_hash;
 
-                    // Scrap buyer address
-                    // const page = await ethscan(transaction_hash);
-                    // const $ = cheerio.load(page);
-                    // let buyer_addrr = undefined;
-                    // $(".hash-tag.text-truncate.align-middle > a").each((i, el) => {
-                    //     if (i == 1) buyer_addrr = el.attribs.href.split("?a=")[1];
-                    // });
-
-                    // Get buyer address
+                    // 📌 Get buyer address
                     let { result } = await web3_api.post('', { json: { "jsonrpc": "2.0", "id": 0, "method": "eth_getTransactionByHash", "params": [transaction_hash] }, headers: { referer: 'etherscan.io' } }).json();
                     let buyer_addrr = result.from;
 
-                    // Get buyer merge token id
+                    // ⚫️ Get buyer merge token id
                     let { assets } = await os_api(`assets?owner=${buyer_addrr}&asset_contract_address=${merge_contract}`).json();
                     var merged_to = Number(assets[0].token_id);
                 }
-                // else Token as been voided without merge
+                // else 🗑️ Token has been voided without merging
             } catch (e) {
-                // Token has been merged before the re-mint
+                // 🌱 Token has been merged before the re-mint
             }
         }
         var metadata = JSON.parse(Buffer.from(b64json, 'base64').toString());
