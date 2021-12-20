@@ -4,7 +4,6 @@ dotenv.config();
 
 const merge_contract = "0xc3f8a0f5841abff777d3eefa5047e8d413a1c9ab";
 const os_api = got.extend({ prefixUrl: "https://api.opensea.io/api/v1/", responseType: 'json', resolveBodyOnly: true });
-const ethscan = got.extend({ prefixUrl: "https://etherscan.io/tx/", resolveBodyOnly: true });
 const web3_api = got.extend({ prefixUrl: "https://node1.web3api.com/", responseType: 'json', resolveBodyOnly: true });
 const tanabata_api = got.extend({ prefixUrl: "https://tanabata.tina.cafe/pak/merges", headers: { secret: process.env.TANABATA_SECRET }, responseType: 'json', resolveBodyOnly: true });
 
