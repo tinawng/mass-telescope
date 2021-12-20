@@ -12,7 +12,7 @@ try {
     for (let chunk = 0; chunk < 130; chunk++) {
         // Making url list for // request exec
         let urls = []
-        for (let i = 1; i <= 233; i++) {
+        for (let i = 1; i <= 223; i++) {
             let hex = (223 * chunk + i).toString(16);
             let b32 = '0xc87b56dd' + hex.padStart(64, '0');
             urls.push(web3_api.post('', { json: { "jsonrpc": "2.0", "id": (223 * chunk + i), "method": "eth_call", "params": [{ "from": "0x0000000000000000000000000000000000000000", "data": b32, "to": "0xc3f8a0f5841abff777d3eefa5047e8d413a1c9ab" }, "latest"] }, headers: { referer: 'etherscan.io' } }).json());
