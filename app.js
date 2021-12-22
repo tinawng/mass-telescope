@@ -5,7 +5,7 @@ dotenv.config();
 const merge_contract = "0xc3f8a0f5841abff777d3eefa5047e8d413a1c9ab";
 const os_api = got.extend({ prefixUrl: "https://api.opensea.io/api/v1/", responseType: 'json', resolveBodyOnly: true });
 const web3_api = got.extend({ prefixUrl: "https://node1.web3api.com/", responseType: 'json', resolveBodyOnly: true });
-const tanabata_api = got.extend({ prefixUrl: "https://tanabata.tina.cafe/pak/merges", headers: { secret: process.env.TANABATA_SECRET }, responseType: 'json', resolveBodyOnly: true });
+const tanabata_api = got.extend({ prefixUrl: "https://tanabata.tina.cafe/pak/", headers: { secret: process.env.TANABATA_SECRET }, responseType: 'json', resolveBodyOnly: true });
 
 // ⚫️ Parsing all tokens: 130 * 223 = 28,990
 for (let chunk = 0; chunk < 130; chunk++) {
@@ -72,8 +72,11 @@ for (let chunk = 0; chunk < 130; chunk++) {
     }
     console.timeEnd(`metadata ${chunk}`);
 
-    tanabata_api.post('', { json: tokens })
+    tanabata_api.post('merges', { json: tokens })
 }
+
+// 📸 Save history snapshot
+tanabata_api('snap_history');
 
 function byte32ToString(hex) {
     let str = '';
