@@ -27,6 +27,7 @@ for (let chunk = 0; chunk < 130; chunk++) {
     for (let i = 0; i < tokens.length; i++) {
         const api_resp = tokens[i];
 
+        let merged_to, merged_on, sale_price;
         if (!api_resp.error) {
             var b64json = byte32ToString(api_resp.result).split('json;base64,')[1];
         }
@@ -38,8 +39,8 @@ for (let chunk = 0; chunk < 130; chunk++) {
                 var b64json = token_metadata.split('json;base64,')[1];
 
                 if (last_sale) {
-                    var merged_on = Date.parse(last_sale.event_timestamp);
-                    var sale_price = last_sale.total_price / 10e17;
+                    merged_on = Date.parse(last_sale.event_timestamp);
+                    sale_price = last_sale.total_price / 10e17;
                     let transaction_hash = last_sale.transaction.transaction_hash;
 
                     // 📌 Get buyer address
@@ -48,7 +49,7 @@ for (let chunk = 0; chunk < 130; chunk++) {
 
                     // ⚫️ Get buyer merge token id
                     let { assets } = await os_api(`assets?owner=${buyer_addrr}&asset_contract_address=${merge_contract}`).json();
-                    var merged_to = Number(assets[0].token_id);
+                    merged_to = Number(assets[0].token_id);
                 }
                 // else 🗑️ Token has been voided without merging
             } catch (e) {
