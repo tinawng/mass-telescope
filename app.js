@@ -73,11 +73,10 @@ for (let chunk = 0; chunk < 130; chunk++) {
     }
     console.timeEnd(`metadata ${chunk}`);
 
-    tanabata_api.post('merges', { json: tokens })
+    tanabata_api.post('merges', { json: tokens });
 }
-
 // 📸 Save history snapshot
-tanabata_api('snap_history');
+await tanabata_api('snap_history');
 
 function byte32ToString(hex) {
     let str = '';
