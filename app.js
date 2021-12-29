@@ -46,7 +46,11 @@ for (let chunk = 0; chunk < 1; chunk++) {
 
                 if (last_sale) {
                     merged_on = Date.parse(last_sale.event_timestamp);
-                    sale_price = last_sale.total_price / 10e17;
+
+                    if (last_sale.payment_token.symbol === 'ASH')
+                        sale_price = (last_sale.payment_token.eth_price * 10) * last_sale.total_price / 10e17;
+                    else sale_price = last_sale.total_price / 10e17;
+
                     let transaction_hash = last_sale.transaction.transaction_hash;
 
                     // 📌 Get buyer address
@@ -66,7 +70,7 @@ for (let chunk = 0; chunk < 1; chunk++) {
                     const frame_content = await myframe.content();
                     const buyer_addrr = frame_content.split(`0xc3f8a0f5841abff777d3eefa5047e8d413a1c9ab?a=`)[1].slice(0, 42);
                     merged_on = new Date(frame_content.split(`ago">`)[1].split('<')[0].concat(' UTC'));
-                    
+
                     // ⚫️ Get buyer merge token id
                     let { assets } = await os_api(`assets?owner=${buyer_addrr}&asset_contract_address=${merge_contract}`).json();
                     merged_to = Number(assets[0].token_id);
