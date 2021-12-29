@@ -14,13 +14,13 @@ const web3_api = got.extend({ prefixUrl: "https://node1.web3api.com/", responseT
 const tanabata_api = got.extend({ prefixUrl: "https://tanabata.tina.cafe/pak/", headers: { secret: process.env.TANABATA_SECRET }, responseType: 'json', resolveBodyOnly: true });
 
 // ⚫️ Parsing all tokens: 130 * 223 = 28,990
-for (let chunk = 0; chunk < 1; chunk++) {
+for (let chunk = 0; chunk < 130; chunk++) {
     // ⚡️ Making url list for // request exec
     let urls = []
-    for (let i = 1; i <= 1; i++) {
-        let hex = (6986).toString(16);
+    for (let i = 1; i <= 223; i++) {
+        let hex = (223 * chunk + i).toString(16);
         let b32 = '0xc87b56dd' + hex.padStart(64, '0');
-        urls.push(web3_api.post('', { json: { "jsonrpc": "2.0", "id": (6986), "method": "eth_call", "params": [{ "from": "0x0000000000000000000000000000000000000000", "data": b32, "to": merge_contract }, "latest"] }, headers: { referer: 'etherscan.io' } }).json());
+        urls.push(web3_api.post('', { json: { "jsonrpc": "2.0", "id": (223 * chunk + i), "method": "eth_call", "params": [{ "from": "0x0000000000000000000000000000000000000000", "data": b32, "to": merge_contract }, "latest"] }, headers: { referer: 'etherscan.io' } }).json());
     }
 
     // 🗃️ Store api responses
@@ -95,17 +95,16 @@ for (let chunk = 0; chunk < 1; chunk++) {
             merged_on: merged_on,
             sale_price: sale_price,
         }
-        console.log(tokens[i]);
     }
     console.timeEnd(`metadata ${chunk}`);
 
-    // tanabata_api.post('merges', { json: tokens });
+    tanabata_api.post('merges', { json: tokens });
 }
 
 await browser.close();
 
 // 📸 Save history snapshot
-// await tanabata_api('snap_history');
+await tanabata_api('snap_history');
 
 
 function byte32ToString(hex) {
