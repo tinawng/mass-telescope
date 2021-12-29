@@ -66,9 +66,9 @@ for (let chunk = 0; chunk < 130; chunk++) {
                     await page.goto(ethscan_url + api_resp.id);
                     await page.waitForSelector('iframe');
                     const frames = await page.frames();
-                    const myframe = frames.find(f => f.url().includes(`contractAddress=${merge_contract}`));
-                    const frame_content = await myframe.content();
-                    const buyer_addrr = frame_content.split(`0xc3f8a0f5841abff777d3eefa5047e8d413a1c9ab?a=`)[1].slice(0, 42);
+                    const transfers_frame = frames.find(f => f.url().includes(`contractAddress=${merge_contract}`));
+                    const frame_content = await transfers_frame.content();
+                    const buyer_addrr = frame_content.split(`${merge_contract}?a=`)[1].slice(0, 42);
                     merged_on = new Date(frame_content.split(`ago">`)[1].split('<')[0].concat(' UTC'));
 
                     // ⚫️ Get buyer merge token id
