@@ -1,20 +1,26 @@
 import dotenv from 'dotenv'
 import got from 'got';
+import puppeteer from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 dotenv.config();
+puppeteer.use(StealthPlugin());
+const browser = await puppeteer.launch();
+const page = await browser.newPage();
 
 const merge_contract = "0xc3f8a0f5841abff777d3eefa5047e8d413a1c9ab";
+const ethscan_url = `https://etherscan.io/token/${merge_contract}?a=`;
 const os_api = got.extend({ prefixUrl: "https://api.opensea.io/api/v1/", responseType: 'json', resolveBodyOnly: true });
 const web3_api = got.extend({ prefixUrl: "https://node1.web3api.com/", responseType: 'json', resolveBodyOnly: true });
 const tanabata_api = got.extend({ prefixUrl: "https://tanabata.tina.cafe/pak/", headers: { secret: process.env.TANABATA_SECRET }, responseType: 'json', resolveBodyOnly: true });
 
 // ⚫️ Parsing all tokens: 130 * 223 = 28,990
-for (let chunk = 0; chunk < 130; chunk++) {
+for (let chunk = 0; chunk < 1; chunk++) {
     // ⚡️ Making url list for // request exec
     let urls = []
-    for (let i = 1; i <= 223; i++) {
-        let hex = (223 * chunk + i).toString(16);
+    for (let i = 1; i <= 1; i++) {
+        let hex = (6986).toString(16);
         let b32 = '0xc87b56dd' + hex.padStart(64, '0');
-        urls.push(web3_api.post('', { json: { "jsonrpc": "2.0", "id": (223 * chunk + i), "method": "eth_call", "params": [{ "from": "0x0000000000000000000000000000000000000000", "data": b32, "to": merge_contract }, "latest"] }, headers: { referer: 'etherscan.io' } }).json());
+        urls.push(web3_api.post('', { json: { "jsonrpc": "2.0", "id": (6986), "method": "eth_call", "params": [{ "from": "0x0000000000000000000000000000000000000000", "data": b32, "to": merge_contract }, "latest"] }, headers: { referer: 'etherscan.io' } }).json());
     }
 
     // 🗃️ Store api responses
@@ -51,8 +57,23 @@ for (let chunk = 0; chunk < 130; chunk++) {
                     let { assets } = await os_api(`assets?owner=${buyer_addrr}&asset_contract_address=${merge_contract}`).json();
                     merged_to = Number(assets[0].token_id);
                 }
-                // else 🗑️ Token has been voided without merging
+                else {
+                    // 👩‍🦯 Not visible using OpenSea api, scraping from etherscan
+                    await page.goto(ethscan_url + api_resp.id);
+                    await page.waitForSelector('iframe');
+                    const frames = await page.frames();
+                    const myframe = frames.find(f => f.url().includes(`contractAddress=${merge_contract}`));
+                    const frame_content = await myframe.content();
+                    const buyer_addrr = frame_content.split(`0xc3f8a0f5841abff777d3eefa5047e8d413a1c9ab?a=`)[1].slice(0, 42);
+                    merged_on = new Date(frame_content.split(`ago">`)[1].split('<')[0].concat(' UTC'));
+                    
+                    // ⚫️ Get buyer merge token id
+                    let { assets } = await os_api(`assets?owner=${buyer_addrr}&asset_contract_address=${merge_contract}`).json();
+                    merged_to = Number(assets[0].token_id);
+
+                }
             } catch (e) {
+                console.log(e);
                 // 🌱 Token has been merged before the re-mint
             }
         }
@@ -70,13 +91,18 @@ for (let chunk = 0; chunk < 130; chunk++) {
             merged_on: merged_on,
             sale_price: sale_price,
         }
+        console.log(tokens[i]);
     }
     console.timeEnd(`metadata ${chunk}`);
 
-    tanabata_api.post('merges', { json: tokens });
+    // tanabata_api.post('merges', { json: tokens });
 }
+
+await browser.close();
+
 // 📸 Save history snapshot
-await tanabata_api('snap_history');
+// await tanabata_api('snap_history');
+
 
 function byte32ToString(hex) {
     let str = '';
