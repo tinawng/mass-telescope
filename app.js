@@ -59,26 +59,21 @@ for (let chunk = 0; chunk < 130; chunk++) {
 
                     // ⚫️ Get buyer merge token id
                     let { assets } = await os_api(`assets?owner=${buyer_addrr}&asset_contract_address=${merge_contract}`).json();
-                    merged_to = Number(assets[0].token_id);
+                    if (assets[0])
+                        merged_to = Number(assets[0].token_id);
+                    else
+                    {
+                        // 🤷‍♀️ Buyer no longer has the token, scraping from etherscan
+                        [merged_to, merged_on] = await scrapEtherScan(api_resp.id);
+                    }
                 }
                 else {
                     // 👩‍🦯 Not visible using OpenSea api, scraping from etherscan
-                    await page.goto(ethscan_url + api_resp.id);
-                    await page.waitForSelector('iframe');
-                    const frames = await page.frames();
-                    const transfers_frame = frames.find(f => f.url().includes(`contractAddress=${merge_contract}`));
-                    const frame_content = await transfers_frame.content();
-                    const buyer_addrr = frame_content.split(`${merge_contract}?a=`)[1].slice(0, 42);
-                    merged_on = new Date(frame_content.split(`ago">`)[1].split('<')[0].concat(' UTC'));
-
-                    // ⚫️ Get buyer merge token id
-                    let { assets } = await os_api(`assets?owner=${buyer_addrr}&asset_contract_address=${merge_contract}`).json();
-                    merged_to = Number(assets[0].token_id);
-
+                    [merged_to, merged_on] = await scrapEtherScan(api_resp.id);
                 }
             } catch (e) {
-                console.log(e);
                 // 🌱 Token has been merged before the re-mint
+                console.error(e);
             }
         }
         var metadata = JSON.parse(Buffer.from(b64json, 'base64').toString());
@@ -95,6 +90,7 @@ for (let chunk = 0; chunk < 130; chunk++) {
             merged_on: merged_on,
             sale_price: sale_price,
         }
+        console.log(tokens[i]);
     }
     console.timeEnd(`metadata ${chunk}`);
 
@@ -106,6 +102,22 @@ await browser.close();
 // 📸 Save history snapshot
 await tanabata_api('snap_history');
 
+
+async function scrapEtherScan(token_id) {
+    await page.goto(ethscan_url + token_id);
+    await page.waitForSelector('iframe');
+    const frames = await page.frames();
+    const transfers_frame = frames.find(f => f.url().includes(`contractAddress=${merge_contract}`));
+    const frame_content = await transfers_frame.content();
+    const buyer_addrr = frame_content.split(`${merge_contract}?a=`)[1].slice(0, 42);
+    let merged_on = new Date(frame_content.split(`ago">`)[1].split('<')[0].concat(' UTC'));
+
+    // ⚫️ Get buyer merge token id
+    let { assets } = await os_api(`assets?owner=${buyer_addrr}&asset_contract_address=${merge_contract}`).json();
+    let merged_to = Number(assets[0].token_id);
+
+    return [merged_to, merged_on];
+}
 
 function byte32ToString(hex) {
     let str = '';
