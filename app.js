@@ -16,7 +16,7 @@ const tanabata_api = got.extend({ prefixUrl: "https://tanabata.tina.cafe/pak/", 
 // ⚫️ Parsing all tokens: 130 * 223 = 28,990
 for (let chunk = 0; chunk < 130; chunk++) {
     // ⚡️ Making url list for // request exec
-    let urls = []
+    let urls = [],
     for (let i = 1; i <= 223; i++) {
         let hex = (223 * chunk + i).toString(16);
         let b32 = '0xc87b56dd' + hex.padStart(64, '0');
@@ -58,14 +58,7 @@ for (let chunk = 0; chunk < 130; chunk++) {
                     let buyer_addrr = result.from;
 
                     // ⚫️ Get buyer merge token id
-                    let { assets } = await os_api(`assets?owner=${buyer_addrr}&asset_contract_address=${merge_contract}`).json();
-                    if (assets[0])
-                        merged_to = Number(assets[0].token_id);
-                    else
-                    {
-                        // 🤷‍♀️ Buyer no longer has the token, scraping from etherscan
-                        [merged_to, merged_on] = await scrapEtherScan(api_resp.id);
-                    }
+                    [merged_to, merged_on] = await scrapEtherScan(api_resp.id);
                 }
                 else {
                     // 👩‍🦯 Not visible using OpenSea api, scraping from etherscan
@@ -90,7 +83,6 @@ for (let chunk = 0; chunk < 130; chunk++) {
             merged_on: merged_on,
             sale_price: sale_price,
         }
-        console.log(tokens[i]);
     }
     console.timeEnd(`metadata ${chunk}`);
 
