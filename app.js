@@ -16,7 +16,7 @@ const tanabata_api = got.extend({ prefixUrl: "https://tanabata.tina.cafe/pak/", 
 // ⚫️ Parsing all tokens: 130 * 223 = 28,990
 for (let chunk = 0; chunk < 130; chunk++) {
     // ⚡️ Making url list for // request exec
-    let urls = [],
+    let urls = [];
     for (let i = 1; i <= 223; i++) {
         let hex = (223 * chunk + i).toString(16);
         let b32 = '0xc87b56dd' + hex.padStart(64, '0');
