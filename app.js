@@ -8,6 +8,7 @@ const browser = await puppeteer.launch();
 const page = await browser.newPage();
 
 const merge_contract = "0xc3f8a0f5841abff777d3eefa5047e8d413a1c9ab";
+const nifty_omnibus = "0xe052113bd7d7700d623414a0a4585bcae754e9d5";
 const ethscan_url = `https://etherscan.io/token/${merge_contract}?a=`;
 const os_api = got.extend({ prefixUrl: "https://api.opensea.io/api/v1/", responseType: 'json', resolveBodyOnly: true });
 const web3_api = got.extend({ prefixUrl: "https://node1.web3api.com/", responseType: 'json', resolveBodyOnly: true });
@@ -49,7 +50,7 @@ for (let chunk = 0; chunk < 130; chunk++) {
                         sale_price = (last_sale.payment_token.eth_price * 10) * last_sale.total_price / 10e17;
                     else sale_price = last_sale.total_price / 10e17;
                 }
-                
+
                 // ⚫️ Get merge date & buyer merge token id
                 [merged_to, merged_on] = await scrapEtherScan(api_resp.id);
             } catch (e) {
@@ -84,17 +85,25 @@ await tanabata_api('snap_history');
 
 
 async function scrapEtherScan(token_id) {
+    console.log(token_id);
     await page.goto(ethscan_url + token_id);
     await page.waitForSelector('iframe');
     const frames = await page.frames();
-    const transfers_frame = frames.find(f => f.url().includes(`contractAddress=${merge_contract}`));
+
+    const transfers_frame = frames.find(f => f.name() == "tokentxnsiframe");
+    await transfers_frame.waitForSelector('.hash-tag');
     const frame_content = await transfers_frame.content();
-    const buyer_addrr = frame_content.split(`${merge_contract}?a=`)[1].slice(0, 42);
-    let merged_on = new Date(frame_content.split(`ago">`)[1].split('<')[0].concat(' UTC'));
+    const buyer_addrr = frame_content.split(`href="${merge_contract}?a=`)[1].slice(0, 42);
 
     // ⚫️ Get buyer merge token id
-    let { assets } = await os_api(`assets?owner=${buyer_addrr}&asset_contract_address=${merge_contract}`).json();
-    let merged_to = Number(assets[0].token_id);
+    let merged_to;
+    if (buyer_addrr === nifty_omnibus) merged_to = undefined; // 🔥 Voided
+    else {
+        let { assets } = await os_api(`assets?owner=${buyer_addrr}&asset_contract_address=${merge_contract}`).json();
+        merged_to = Number(assets[0].token_id);
+    }
+    
+    let merged_on = new Date(frame_content.split(`ago">`)[1].split('<')[0].concat(' UTC'));
 
     return [merged_to, merged_on];
 }
