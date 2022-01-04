@@ -40,30 +40,18 @@ for (let chunk = 0; chunk < 130; chunk++) {
         else {
             // 💫 This is a merged token
             try {
-                // 📄 Get transaction price & transaction hash
+                // 💰 Get transaction price & metadatas
                 let { token_metadata, last_sale } = await os_api(`asset/${merge_contract}/${api_resp.id.toString()}`).json();
                 var b64json = token_metadata.split('json;base64,')[1];
 
                 if (last_sale) {
-                    merged_on = Date.parse(last_sale.event_timestamp);
-
                     if (last_sale.payment_token.symbol === 'ASH')
                         sale_price = (last_sale.payment_token.eth_price * 10) * last_sale.total_price / 10e17;
                     else sale_price = last_sale.total_price / 10e17;
-
-                    let transaction_hash = last_sale.transaction.transaction_hash;
-
-                    // 📌 Get buyer address
-                    let { result } = await web3_api.post('', { json: { "jsonrpc": "2.0", "id": 0, "method": "eth_getTransactionByHash", "params": [transaction_hash] }, headers: { referer: 'etherscan.io' } }).json();
-                    let buyer_addrr = result.from;
-
-                    // ⚫️ Get buyer merge token id
-                    [merged_to, merged_on] = await scrapEtherScan(api_resp.id);
                 }
-                else {
-                    // 👩‍🦯 Not visible using OpenSea api, scraping from etherscan
-                    [merged_to, merged_on] = await scrapEtherScan(api_resp.id);
-                }
+                
+                // ⚫️ Get merge date & buyer merge token id
+                [merged_to, merged_on] = await scrapEtherScan(api_resp.id);
             } catch (e) {
                 // 🌱 Token has been merged before the re-mint
                 console.error(e);
