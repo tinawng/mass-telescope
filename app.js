@@ -85,7 +85,6 @@ await tanabata_api('snap_history');
 
 
 async function scrapEtherScan(token_id) {
-    console.log(token_id);
     await page.goto(ethscan_url + token_id);
     await page.waitForSelector('iframe');
     const frames = await page.frames();
