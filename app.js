@@ -14,6 +14,9 @@ const os_api = got.extend({ prefixUrl: "https://api.opensea.io/api/v1/", respons
 const web3_api = got.extend({ prefixUrl: "https://node1.web3api.com/", responseType: 'json', resolveBodyOnly: true });
 const tanabata_api = got.extend({ prefixUrl: "https://tanabata.tina.cafe/pak/", headers: { secret: process.env.TANABATA_SECRET }, responseType: 'json', resolveBodyOnly: true });
 
+//♻️ Already known merged token
+const known_merged = await tanabata_api('merged_tokens');
+
 // ⚫️ Parsing all tokens: 130 * 223 = 28,990
 for (let chunk = 0; chunk < 130; chunk++) {
     // ⚡️ Making url list for // request exec
@@ -40,22 +43,46 @@ for (let chunk = 0; chunk < 130; chunk++) {
         }
         else {
             // 💫 This is a merged token
-            try {
-                // 💰 Get transaction price & metadatas
-                let { token_metadata, last_sale } = await os_api(`asset/${merge_contract}/${api_resp.id.toString()}`).json();
-                var b64json = token_metadata.split('json;base64,')[1];
 
-                if (last_sale) {
-                    if (last_sale.payment_token.symbol === 'ASH')
-                        sale_price = (last_sale.payment_token.eth_price * 10) * last_sale.total_price / 10e17;
-                    else sale_price = last_sale.total_price / 10e17;
+            // 🔎 Is this a known merged?
+            if (known_merged.find(t => t.id === api_resp.id)) {
+                //⚡ Merged token metadata wont change, re-using previous record
+                let token = known_merged.find(t => t.id === api_resp.id)
+
+                // 🤖 Simulating json
+                let json = {
+                    attributes: [
+                        { trait_type: 'Mass', value: token.mass },
+                        { trait_type: 'Alpha', value: token.alpha },
+                        { trait_type: 'Tier', value: token.tier },
+                        { trait_type: 'Class', value: token.class },
+                        { trait_type: 'Merges', value: token.merges }
+                    ]
                 }
 
-                // ⚫️ Get merge date & buyer merge token id
-                [merged_to, merged_on] = await scrapEtherScan(api_resp.id);
-            } catch (e) {
-                // 🌱 Token has been merged before the re-mint
-                console.error(e);
+                var b64json = Buffer.from(JSON.stringify(json)).toString("base64");
+                merged_to = token.merged_to;
+                merged_on = token.merged_on;
+                sale_price = token.sale_price;
+            }
+            else {
+                try {
+                    // 💰 Get transaction price & metadatas
+                    let { token_metadata, last_sale } = await os_api(`asset/${merge_contract}/${api_resp.id.toString()}`).json();
+                    var b64json = token_metadata.split('json;base64,')[1];
+
+                    if (last_sale) {
+                        if (last_sale.payment_token.symbol === 'ASH')
+                            sale_price = (last_sale.payment_token.eth_price * 10) * last_sale.total_price / 10e17;
+                        else sale_price = last_sale.total_price / 10e17;
+                    }
+
+                    // ⚫️ Get merge date & buyer merge token id
+                    [merged_to, merged_on] = await scrapEtherScan(api_resp.id);
+                } catch (e) {
+                    // 🌱 Token has been merged before the re-mint
+                    console.error(e);
+                }
             }
         }
         var metadata = JSON.parse(Buffer.from(b64json, 'base64').toString());
@@ -101,7 +128,7 @@ async function scrapEtherScan(token_id) {
         let { assets } = await os_api(`assets?owner=${buyer_addrr}&asset_contract_address=${merge_contract}`).json();
         merged_to = Number(assets[0].token_id);
     }
-    
+
     let merged_on = new Date(frame_content.split(`ago">`)[1].split('<')[0].concat(' UTC'));
 
     return [merged_to, merged_on];
