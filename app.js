@@ -10,6 +10,7 @@ const page = await browser.newPage();
 const merge_contract = "0xc3f8a0f5841abff777d3eefa5047e8d413a1c9ab";
 const nifty_omnibus = "0xe052113bd7d7700d623414a0a4585bcae754e9d5";
 const ethscan_url = `https://etherscan.io/token/${merge_contract}?a=`;
+const nifty_url = `https://niftygateway.com/marketplace?collectible=${merge_contract}&filters[onSale]=true&tokenId=`;
 const os_api = got.extend({ prefixUrl: "https://api.opensea.io/api/v1/", responseType: 'json', resolveBodyOnly: true });
 const web3_api = got.extend({ prefixUrl: "https://node1.web3api.com/", responseType: 'json', resolveBodyOnly: true });
 const tanabata_api = got.extend({ prefixUrl: "https://tanabata.tina.cafe/pak/", headers: { secret: process.env.TANABATA_SECRET }, responseType: 'json', resolveBodyOnly: true });
@@ -45,7 +46,7 @@ for (let chunk = 0; chunk < 130; chunk++) {
             // 💫 This is a merged token
 
             // 🔎 Is this a known merged?
-            if (known_merged.find(t => t.id === api_resp.id)) {
+            if (known_merged.find(t => t.id === api_resp.id && t.merged_to)) {
                 //⚡ Merged token metadata wont change, re-using previous record
                 let token = known_merged.find(t => t.id === api_resp.id)
 
@@ -123,7 +124,7 @@ async function scrapEtherScan(token_id) {
 
     // ⚫️ Get buyer merge token id
     let merged_to;
-    if (buyer_addrr === nifty_omnibus) merged_to = undefined; // 🔥 Voided
+    if (buyer_addrr === nifty_omnibus) merged_to = await scrapNiftyScan(token_id); // 🔎 Search on Nifty
     else {
         let { assets } = await os_api(`assets?owner=${buyer_addrr}&asset_contract_address=${merge_contract}`).json();
         merged_to = Number(assets[0].token_id);
@@ -132,6 +133,16 @@ async function scrapEtherScan(token_id) {
     let merged_on = new Date(frame_content.split(`ago">`)[1].split('<')[0].concat(' UTC'));
 
     return [merged_to, merged_on];
+}
+
+async function scrapNiftyScan(token_id) {
+    await page.goto(nifty_url + token_id);
+    await page.waitForSelector('.MuiTypography-root');
+
+    let content = await page.content();
+    let merged_to = content.split('This mass has been merged into #')[1].split('</h3>')[0]
+    
+    return Number(merged_to);
 }
 
 function byte32ToString(hex) {
