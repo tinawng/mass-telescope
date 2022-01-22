@@ -6,17 +6,21 @@ dotenv.config();
 puppeteer.use(StealthPlugin());
 const browser = await puppeteer.launch();
 const page = await browser.newPage();
+await page.setViewport({ width: 1920, height: 937 });
 
 const merge_contract = "0xc3f8a0f5841abff777d3eefa5047e8d413a1c9ab";
 const nifty_omnibus = "0xe052113bd7d7700d623414a0a4585bcae754e9d5";
 const ethscan_url = `https://etherscan.io/token/${merge_contract}?a=`;
 const nifty_url = `https://niftygateway.com/marketplace?collectible=${merge_contract}&filters[onSale]=true&tokenId=`;
-const os_api = got.extend({ prefixUrl: "https://api.opensea.io/api/v1/", responseType: 'json', resolveBodyOnly: true });
+const os_api = got.extend({ prefixUrl: "https://api.opensea.io/api/v1/", headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/97.0.4692.99 Safari/537.36' }, responseType: 'json', resolveBodyOnly: true });
 const web3_api = got.extend({ prefixUrl: "https://node1.web3api.com/", responseType: 'json', resolveBodyOnly: true });
+const cryptocompare_api = got.extend({ prefixUrl: "https://min-api.cryptocompare.com/data", responseType: 'json', resolveBodyOnly: true });
 const tanabata_api = got.extend({ prefixUrl: "https://tanabata.tina.cafe/pak/", headers: { secret: process.env.TANABATA_SECRET }, responseType: 'json', resolveBodyOnly: true });
 
 //♻️ Already known merged token
 const known_merged = await tanabata_api('merged_tokens');
+//💲 Get eth/usd price
+const eth_usd = (await cryptocompare_api('price?fsym=ETH&tsyms=USD').json()).USD;
 
 // ⚫️ Parsing all tokens: 130 * 223 = 28,990
 for (let chunk = 0; chunk < 130; chunk++) {
@@ -29,11 +33,11 @@ for (let chunk = 0; chunk < 130; chunk++) {
     }
 
     // 🗃️ Store api responses
-    console.time(`tokens   ${chunk}`);
+    // console.time(`tokens   ${chunk}`);
     let tokens = await Promise.all(urls);
-    console.timeEnd(`tokens   ${chunk}`);
+    // console.timeEnd(`tokens   ${chunk}`);
 
-    console.time(`metadata ${chunk}`);
+    // console.time(`metadata ${chunk}`);
     // 🔍️ Parse api responses and create token object (+ some extra infos)
     for (let i = 0; i < tokens.length; i++) {
         const api_resp = tokens[i];
@@ -69,20 +73,24 @@ for (let chunk = 0; chunk < 130; chunk++) {
             else {
                 try {
                     // 💰 Get transaction price & metadatas
-                    let { token_metadata, last_sale } = await os_api(`asset/${merge_contract}/${api_resp.id.toString()}`).json();
+                    let { token_metadata, last_sale } = await os_api(`asset/${merge_contract}/${api_resp.id.toString()}/?format=json`).json();
                     var b64json = token_metadata.split('json;base64,')[1];
 
                     if (last_sale) {
                         if (last_sale.payment_token.symbol === 'ASH')
                             sale_price = (last_sale.payment_token.eth_price * 10) * last_sale.total_price / 10e17;
                         else sale_price = last_sale.total_price / 10e17;
+                        
+                    // ⚫️ Get merge date & buyer merge token id
+                        [merged_to, merged_on] = await scrapEtherScan(api_resp.id);
+                    }
+                    else {
+                        [merged_to, merged_on, sale_price] = await scrapEtherScan(api_resp.id);
                     }
 
-                    // ⚫️ Get merge date & buyer merge token id
-                    [merged_to, merged_on] = await scrapEtherScan(api_resp.id);
                 } catch (e) {
                     // 🌱 Token has been merged before the re-mint
-                    console.error(e);
+                    // console.error(e);
                 }
             }
         }
@@ -101,7 +109,7 @@ for (let chunk = 0; chunk < 130; chunk++) {
             sale_price: sale_price,
         }
     }
-    console.timeEnd(`metadata ${chunk}`);
+    // console.timeEnd(`metadata ${chunk}`);
 
     tanabata_api.post('merges', { json: tokens });
 }
@@ -123,8 +131,8 @@ async function scrapEtherScan(token_id) {
     const buyer_addrr = frame_content.split(`href="${merge_contract}?a=`)[1].slice(0, 42);
 
     // ⚫️ Get buyer merge token id
-    let merged_to;
-    if (buyer_addrr === nifty_omnibus) merged_to = await scrapNiftyScan(token_id); // 🔎 Search on Nifty
+    let merged_to, sale_price;
+    if (buyer_addrr === nifty_omnibus) [merged_to, sale_price] = await scrapNiftyScan(token_id); // 🔎 Search on Nifty
     else {
         let { assets } = await os_api(`assets?owner=${buyer_addrr}&asset_contract_address=${merge_contract}`).json();
         merged_to = Number(assets[0].token_id);
@@ -132,17 +140,18 @@ async function scrapEtherScan(token_id) {
 
     let merged_on = new Date(frame_content.split(`ago">`)[1].split('<')[0].concat(' UTC'));
 
-    return [merged_to, merged_on];
+    return [merged_to, merged_on, sale_price];
 }
 
 async function scrapNiftyScan(token_id) {
     await page.goto(nifty_url + token_id);
-    await page.waitForSelector('.MuiTypography-root');
-
+    await page.waitForSelector('.MuiTypography-h3');
+    await page.waitForFunction(() => !document.querySelector('.MuiTypography-h3').innerHTML.includes('--'));
     let content = await page.content();
     let merged_to = content.split('This mass has been merged into #')[1].split('</h3>')[0]
-    
-    return Number(merged_to);
+    let sale_price = Number(content.split('MuiTableCell-body\"><span>$')[1].split('</span>')[0].trim().replaceAll(',', '')) / eth_usd;
+
+    return [Number(merged_to), sale_price];
 }
 
 function byte32ToString(hex) {
