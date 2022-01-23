@@ -81,11 +81,12 @@ for (let chunk = 0; chunk < 130; chunk++) {
                             sale_price = (last_sale.payment_token.eth_price * 10) * last_sale.total_price / 10e17;
                         else sale_price = last_sale.total_price / 10e17;
                         
-                    // ⚫️ Get merge date & buyer merge token id
+                        // ⚫️ Get merge date & buyer merge token id
                         [merged_to, merged_on] = await scrapEtherScan(api_resp.id);
                     }
                     else {
-                        [merged_to, merged_on, sale_price] = await scrapEtherScan(api_resp.id);
+                        // ⚫️ Get merge date, buyer merge token id & sale price
+                        [merged_to, merged_on, sale_price] = await scrapEtherScan(api_resp.id, true);
                     }
 
                 } catch (e) {
@@ -120,7 +121,7 @@ await browser.close();
 await tanabata_api('snap_history');
 
 
-async function scrapEtherScan(token_id) {
+async function scrapEtherScan(token_id, get_nifty_sale_prince = false) {
     await page.goto(ethscan_url + token_id);
     await page.waitForSelector('iframe');
     const frames = await page.frames();
@@ -132,7 +133,7 @@ async function scrapEtherScan(token_id) {
 
     // ⚫️ Get buyer merge token id
     let merged_to, sale_price;
-    if (buyer_addrr === nifty_omnibus) [merged_to, sale_price] = await scrapNiftyScan(token_id); // 🔎 Search on Nifty
+    if (buyer_addrr === nifty_omnibus || get_nifty_sale_prince) [merged_to, sale_price] = await scrapNiftyScan(token_id); // 🔎 Search on Nifty
     else {
         let { assets } = await os_api(`assets?owner=${buyer_addrr}&asset_contract_address=${merge_contract}`).json();
         merged_to = Number(assets[0].token_id);
