@@ -80,13 +80,15 @@ for (let chunk = 0; chunk < 130; chunk++) {
                         if (last_sale.payment_token.symbol === 'ASH')
                             sale_price = (last_sale.payment_token.eth_price * 10) * last_sale.total_price / 10e17;
                         else sale_price = last_sale.total_price / 10e17;
-                        
+
                         // ⚫️ Get merge date & buyer merge token id
-                        [merged_to, merged_on] = await scrapEtherScan(api_resp.id);
+                        merged_on = await scrapEtherScan(api_resp.id);
+                        [merged_to] = await scrapNiftyScan(api_resp.id);
                     }
                     else {
                         // ⚫️ Get merge date, buyer merge token id & sale price
-                        [merged_to, merged_on, sale_price] = await scrapEtherScan(api_resp.id, true);
+                        merged_on = await scrapEtherScan(api_resp.id);
+                        [merged_on, sale_price] = await scrapNiftyScan(api_resp.id);
                     }
 
                 } catch (e) {
@@ -121,7 +123,7 @@ await browser.close();
 await tanabata_api('snap_history');
 
 
-async function scrapEtherScan(token_id, get_nifty_sale_prince = false) {
+async function scrapEtherScan(token_id) {
     await page.goto(ethscan_url + token_id);
     await page.waitForSelector('iframe');
     const frames = await page.frames();
@@ -129,19 +131,8 @@ async function scrapEtherScan(token_id, get_nifty_sale_prince = false) {
     const transfers_frame = frames.find(f => f.name() == "tokentxnsiframe");
     await transfers_frame.waitForSelector('.hash-tag');
     const frame_content = await transfers_frame.content();
-    const buyer_addrr = frame_content.split(`href="${merge_contract}?a=`)[1].slice(0, 42);
 
-    // ⚫️ Get buyer merge token id
-    let merged_to, sale_price;
-    if (buyer_addrr === nifty_omnibus || get_nifty_sale_prince) [merged_to, sale_price] = await scrapNiftyScan(token_id); // 🔎 Search on Nifty
-    else {
-        let { assets } = await os_api(`assets?owner=${buyer_addrr}&asset_contract_address=${merge_contract}`).json();
-        merged_to = Number(assets[0].token_id);
-    }
-
-    let merged_on = new Date(frame_content.split(`ago">`)[1].split('<')[0].concat(' UTC'));
-
-    return [merged_to, merged_on, sale_price];
+    return new Date(frame_content.split(`ago">`)[1].split('<')[0].concat(' UTC'));;
 }
 
 async function scrapNiftyScan(token_id) {
