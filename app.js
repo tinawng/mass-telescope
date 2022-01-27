@@ -120,7 +120,7 @@ for (let chunk = 0; chunk < 130; chunk++) {
 await browser.close();
 
 // 📸 Save history snapshot
-await tanabata_api('snap_history');
+await tanabata_api.post('snap_history');
 
 
 async function scrapEtherScan(token_id) {
