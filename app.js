@@ -145,7 +145,7 @@ async function scrapNiftyScan(token_id) {
     let sale_price;
     try {
         sale_price = Number(content.split('MuiTableCell-body\"><span>$')[1].split('</span>')[0].trim().replaceAll(',', '')) / eth_usd;
-    } catch (e) { } // 🙈 Token was transfert outside nifty then merged
+    } catch (e) { } // 🙈 Token withdrawn outside nifty then merged
 
     return [Number(merged_to), sale_price];
 }
