@@ -7,6 +7,7 @@ puppeteer.use(StealthPlugin());
 const browser = await puppeteer.launch();
 const page = await browser.newPage();
 await page.setViewport({ width: 1920, height: 937 });
+await page.setDefaultNavigationTimeout(60000); 
 
 const merge_contract = "0xc3f8a0f5841abff777d3eefa5047e8d413a1c9ab";
 const nifty_omnibus = "0xe052113bd7d7700d623414a0a4585bcae754e9d5";
@@ -33,11 +34,11 @@ for (let chunk = 0; chunk < 130; chunk++) {
     }
 
     // 🗃️ Store api responses
-    // console.time(`tokens   ${chunk}`);
+    console.time(`tokens   ${chunk}`);
     let tokens = await Promise.all(urls);
-    // console.timeEnd(`tokens   ${chunk}`);
+    console.timeEnd(`tokens   ${chunk}`);
 
-    // console.time(`metadata ${chunk}`);
+    console.time(`metadata ${chunk}`);
     // 🔍️ Parse api responses and create token object (+ some extra infos)
     for (let i = 0; i < tokens.length; i++) {
         const api_resp = tokens[i];
@@ -88,12 +89,12 @@ for (let chunk = 0; chunk < 130; chunk++) {
                     else {
                         // ⚫️ Get merge date, buyer merge token id & sale price
                         merged_on = await scrapEtherScan(api_resp.id);
-                        [merged_on, sale_price] = await scrapNiftyScan(api_resp.id);
+                        [merged_to, sale_price] = await scrapNiftyScan(api_resp.id);
                     }
 
                 } catch (e) {
                     // 🌱 Token has been merged before the re-mint
-                    // console.error(e);
+                    console.error(e);
                 }
             }
         }
@@ -112,7 +113,7 @@ for (let chunk = 0; chunk < 130; chunk++) {
             sale_price: sale_price,
         }
     }
-    // console.timeEnd(`metadata ${chunk}`);
+    console.timeEnd(`metadata ${chunk}`);
 
     tanabata_api.post('merges', { json: tokens });
 }
@@ -141,7 +142,10 @@ async function scrapNiftyScan(token_id) {
     await page.waitForFunction(() => !document.querySelector('.MuiTypography-h3').innerHTML.includes('--'));
     let content = await page.content();
     let merged_to = content.split('This mass has been merged into #')[1].split('</h3>')[0]
-    let sale_price = Number(content.split('MuiTableCell-body\"><span>$')[1].split('</span>')[0].trim().replaceAll(',', '')) / eth_usd;
+    let sale_price;
+    try {
+        sale_price = Number(content.split('MuiTableCell-body\"><span>$')[1].split('</span>')[0].trim().replaceAll(',', '')) / eth_usd;
+    } catch (e) { } // 🙈 Token was transfert outside nifty then merged
 
     return [Number(merged_to), sale_price];
 }
