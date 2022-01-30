@@ -27,10 +27,6 @@ for (let chunk = 0; chunk < 130; chunk++) {
             new Promise(async (resolve, reject) => {
                 let api_resp = await web3_api.post('', { json: { "jsonrpc": "2.0", "id": (223 * chunk + i), "method": "eth_call", "params": [{ "from": "0x0000000000000000000000000000000000000000", "data": b32, "to": contract_address }, "latest"] }, headers: { referer: 'etherscan.io' } }).json();
 
-                if (api_resp.id == 41) {
-                    let i = 12;
-                }
-
                 let metadata_b64, merged_to, merged_on, sale_price;
                 if (api_resp.error) {
                     // 💫 This is a merged token
@@ -108,16 +104,16 @@ async function askNiftyMarket(id) {
     return [resp.data.results[0].Timestamp, resp.data.results[0].SaleAmountInCents / 100 / eth_usd]
 }
 async function askNiftyMetadata(id) {
-    let resp = await nifty_metadata_api.get(`?contractAddress=${contract_address}&tokenId=${id}`).json();
+    let { niftyMetadata } = await nifty_metadata_api.get(`?contractAddress=${contract_address}&tokenId=${id}`).json();
 
-    let trait_values = resp.niftyMetadata.trait_values;
+    let trait_values = niftyMetadata.trait_values;
     let metadata_json = {
         attributes: [
-            { trait_type: 'Mass', value: trait_values.filter(t => t.trait.name === 'Mass')[0].trait.value },
-            { trait_type: 'Alpha', value: trait_values.filter(t => t.trait.name === 'Alpha')[0].trait.value },
-            { trait_type: 'Tier', value: trait_values.filter(t => t.trait.name === 'Tier')[0].trait.value },
-            { trait_type: 'Class', value: trait_values.filter(t => t.trait.name === 'Class')[0].trait.value },
-            { trait_type: 'Merges', value: trait_values.filter(t => t.trait.name === 'Merges')[0].trait.value }
+            { trait_type: 'Mass', value: Number(niftyMetadata.description) },
+            { trait_type: 'Alpha', value: Number(trait_values[4].value) },
+            { trait_type: 'Tier', value: Number(trait_values[3].value) },
+            { trait_type: 'Class', value: Number(trait_values[2].value) },
+            { trait_type: 'Merges', value: Number(trait_values[1].value) }
         ]
     }
 
