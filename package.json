@@ -1,14 +1,11 @@
 {
   "name": "mass-telescope",
-  "version": "3.3.2",
+  "version": "4.0.0",
   "main": "app.js",
   "type": "module",
   "homepage": "https://github.com/tinawng/mass-telescope#readme",
   "dependencies": {
     "dotenv": "latest",
-    "got": "^12.0.0",
-    "puppeteer": "^13.0.1",
-    "puppeteer-extra": "^3.2.3",
-    "puppeteer-extra-plugin-stealth": "^2.9.0"
+    "got": "^12.0.0"
   }
 }

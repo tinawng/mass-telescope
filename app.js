@@ -1,28 +1,21 @@
 import dotenv from 'dotenv'
 import got from 'got';
-import puppeteer from 'puppeteer-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 dotenv.config();
-puppeteer.use(StealthPlugin());
-const browser = await puppeteer.launch();
-const page = await browser.newPage();
-await page.setViewport({ width: 1920, height: 937 });
-await page.setDefaultNavigationTimeout(60000); 
 
-const merge_contract = "0xc3f8a0f5841abff777d3eefa5047e8d413a1c9ab";
-const nifty_omnibus = "0xe052113bd7d7700d623414a0a4585bcae754e9d5";
-const ethscan_url = `https://etherscan.io/token/${merge_contract}?a=`;
-const nifty_url = `https://niftygateway.com/marketplace?collectible=${merge_contract}&filters[onSale]=true&tokenId=`;
-const os_api = got.extend({ prefixUrl: "https://api.opensea.io/api/v1/", headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/97.0.4692.99 Safari/537.36' }, responseType: 'json', resolveBodyOnly: true });
-const web3_api = got.extend({ prefixUrl: "https://node1.web3api.com/", responseType: 'json', resolveBodyOnly: true });
-const cryptocompare_api = got.extend({ prefixUrl: "https://min-api.cryptocompare.com/data", responseType: 'json', resolveBodyOnly: true });
+const contract_address = "0xc3f8a0f5841abff777d3eefa5047e8d413a1c9ab";
 const tanabata_api = got.extend({ prefixUrl: "https://tanabata.tina.cafe/pak/", headers: { secret: process.env.TANABATA_SECRET }, responseType: 'json', resolveBodyOnly: true });
-
-//♻️ Already known merged token
-const known_merged = await tanabata_api('merged_tokens');
-//💲 Get eth/usd price
+const web3_api = got.extend({ prefixUrl: "https://node1.web3api.com/", responseType: 'json', resolveBodyOnly: true });
+const alchemy_api = got.extend({ prefixUrl: "https://eth-mainnet.alchemyapi.io/jsonrpc/ER1Uh6Lu38x2xWXc7IomSmYFO5twNigV", responseType: 'json', resolveBodyOnly: true });
+const os_api = got.extend({ prefixUrl: "https://api.opensea.io/api/v1/", headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/97.0.4692.99 Safari/537.36' }, responseType: 'json', resolveBodyOnly: true });
+const nifty_market_api = got.extend({ prefixUrl: "https://api.niftygateway.com/market/nifty-secondary-market/", responseType: 'json', resolveBodyOnly: true, retry: { limit: 10, methods: ['POST'], calculateDelay: ({ attemptCount }) => attemptCount * 2000 } });
+const nifty_metadata_api = got.extend({ prefixUrl: "https://api.niftygateway.com/nifty/metadata-minted/", responseType: 'json', resolveBodyOnly: true, retry: { limit: 10, calculateDelay: ({ attemptCount }) => attemptCount * 2000 } });
+const cryptocompare_api = got.extend({ prefixUrl: "https://min-api.cryptocompare.com/data", responseType: 'json', resolveBodyOnly: true });
 const eth_usd = (await cryptocompare_api('price?fsym=ETH&tsyms=USD').json()).USD;
 
+//♻️ Already known merged token
+// const known_merged = await tanabata_api('merged_tokens');
+
+console.time(`overall`);
 // ⚫️ Parsing all tokens: 130 * 223 = 28,990
 for (let chunk = 0; chunk < 130; chunk++) {
     // ⚡️ Making url list for // request exec
@@ -30,7 +23,50 @@ for (let chunk = 0; chunk < 130; chunk++) {
     for (let i = 1; i <= 223; i++) {
         let hex = (223 * chunk + i).toString(16);
         let b32 = '0xc87b56dd' + hex.padStart(64, '0');
-        urls.push(web3_api.post('', { json: { "jsonrpc": "2.0", "id": (223 * chunk + i), "method": "eth_call", "params": [{ "from": "0x0000000000000000000000000000000000000000", "data": b32, "to": merge_contract }, "latest"] }, headers: { referer: 'etherscan.io' } }).json());
+        urls.push(
+            new Promise(async (resolve, reject) => {
+                let api_resp = await web3_api.post('', { json: { "jsonrpc": "2.0", "id": (223 * chunk + i), "method": "eth_call", "params": [{ "from": "0x0000000000000000000000000000000000000000", "data": b32, "to": contract_address }, "latest"] }, headers: { referer: 'etherscan.io' } }).json();
+
+                if (api_resp.id == 41) {
+                    let i = 12;
+                }
+
+                let metadata_b64, merged_to, merged_on, sale_price;
+                if (api_resp.error) {
+                    // 💫 This is a merged token
+                    merged_to = await askAlchemy(api_resp.id);
+
+                    if (merged_to) {
+                        [metadata_b64, sale_price, merged_on] = await askOpenSea(api_resp.id);
+                        if (!sale_price)
+                            [merged_on, sale_price] = await askNiftyMarket(api_resp.id);
+                    }
+                    else {
+                        // 🌱  merged_to is undefined, token has been merged before the re-mint
+                        metadata_b64 = await askNiftyMetadata(api_resp.id);
+                    }
+                }
+                else
+                    metadata_b64 = byte32ToString(api_resp.result).split('json;base64,')[1];
+
+                var metadata = JSON.parse(Buffer.from(metadata_b64, 'base64').toString());
+
+                let token = {
+                    id: api_resp.id,
+                    mass: metadata?.attributes.filter(a => a.trait_type === 'Mass')[0].value,
+                    alpha: metadata?.attributes.filter(a => a.trait_type === 'Alpha')[0].value,
+                    tier: metadata?.attributes.filter(a => a.trait_type === 'Tier')[0].value,
+                    class: metadata?.attributes.filter(a => a.trait_type === 'Class')[0].value,
+                    merges: metadata?.attributes.filter(a => a.trait_type === 'Merges')[0].value,
+                    merged: !!api_resp.error,
+                    merged_to: merged_to,
+                    merged_on: merged_on,
+                    sale_price: sale_price,
+                }
+
+                resolve(token);
+            })
+        );
     }
 
     // 🗃️ Store api responses
@@ -38,116 +74,55 @@ for (let chunk = 0; chunk < 130; chunk++) {
     let tokens = await Promise.all(urls);
     console.timeEnd(`tokens   ${chunk}`);
 
-    console.time(`metadata ${chunk}`);
-    // 🔍️ Parse api responses and create token object (+ some extra infos)
-    for (let i = 0; i < tokens.length; i++) {
-        const api_resp = tokens[i];
-
-        let merged_to, merged_on, sale_price;
-        if (!api_resp.error) {
-            var b64json = byte32ToString(api_resp.result).split('json;base64,')[1];
-        }
-        else {
-            // 💫 This is a merged token
-
-            // 🔎 Is this a known merged?
-            if (known_merged.find(t => t.id === api_resp.id && t.merged_to)) {
-                //⚡ Merged token metadata wont change, re-using previous record
-                let token = known_merged.find(t => t.id === api_resp.id)
-
-                // 🤖 Simulating json
-                let json = {
-                    attributes: [
-                        { trait_type: 'Mass', value: token.mass },
-                        { trait_type: 'Alpha', value: token.alpha },
-                        { trait_type: 'Tier', value: token.tier },
-                        { trait_type: 'Class', value: token.class },
-                        { trait_type: 'Merges', value: token.merges }
-                    ]
-                }
-
-                var b64json = Buffer.from(JSON.stringify(json)).toString("base64");
-                merged_to = token.merged_to;
-                merged_on = token.merged_on;
-                sale_price = token.sale_price;
-            }
-            else {
-                try {
-                    // 💰 Get transaction price & metadatas
-                    let { token_metadata, last_sale } = await os_api(`asset/${merge_contract}/${api_resp.id.toString()}/?format=json`).json();
-                    var b64json = token_metadata.split('json;base64,')[1];
-
-                    if (last_sale) {
-                        if (last_sale.payment_token.symbol === 'ASH')
-                            sale_price = (last_sale.payment_token.eth_price * 10) * last_sale.total_price / 10e17;
-                        else sale_price = last_sale.total_price / 10e17;
-
-                        // ⚫️ Get merge date & buyer merge token id
-                        merged_on = await scrapEtherScan(api_resp.id);
-                        [merged_to] = await scrapNiftyScan(api_resp.id);
-                    }
-                    else {
-                        // ⚫️ Get merge date, buyer merge token id & sale price
-                        merged_on = await scrapEtherScan(api_resp.id);
-                        [merged_to, sale_price] = await scrapNiftyScan(api_resp.id);
-                    }
-
-                } catch (e) {
-                    // 🌱 Token has been merged before the re-mint
-                    console.error(e);
-                }
-            }
-        }
-        var metadata = JSON.parse(Buffer.from(b64json, 'base64').toString());
-
-        tokens[i] = {
-            id: api_resp.id,
-            mass: metadata?.attributes.filter(a => a.trait_type === 'Mass')[0].value,
-            alpha: metadata?.attributes.filter(a => a.trait_type === 'Alpha')[0].value,
-            tier: metadata?.attributes.filter(a => a.trait_type === 'Tier')[0].value,
-            class: metadata?.attributes.filter(a => a.trait_type === 'Class')[0].value,
-            merges: metadata?.attributes.filter(a => a.trait_type === 'Merges')[0].value,
-            merged: !!api_resp.error,
-            merged_to: merged_to,
-            merged_on: merged_on,
-            sale_price: sale_price,
-        }
-    }
-    console.timeEnd(`metadata ${chunk}`);
-
-    tanabata_api.post('merges', { json: tokens });
+    await tanabata_api.post('merges', { json: tokens });
 }
 
-await browser.close();
-
-// 📸 Save history snapshot
 await tanabata_api.post('snap_history');
+console.timeEnd(`overall`);
 
+async function askAlchemy(id) {
+    let id_hex = '0x' + id.toString(16).padStart(64, '0');
+    let resp = await alchemy_api.post('', { json: { "jsonrpc": "2.0", "id": 20, "method": "eth_getLogs", "params": [{ "fromBlock": "0x0", "toBlock": "latest", "topics": ["0x7ba170514e8ea35827dbbd10c6d3376ca77ff64b62e4b0a395bac9b142dc81dc", [id_hex], null], "address": contract_address }] } }).json();
 
-async function scrapEtherScan(token_id) {
-    await page.goto(ethscan_url + token_id);
-    await page.waitForSelector('iframe');
-    const frames = await page.frames();
-
-    const transfers_frame = frames.find(f => f.name() == "tokentxnsiframe");
-    await transfers_frame.waitForSelector('.hash-tag');
-    const frame_content = await transfers_frame.content();
-
-    return new Date(frame_content.split(`ago">`)[1].split('<')[0].concat(' UTC'));;
+    if (resp?.result.length == 0) return undefined;
+    return parseInt(resp.result[0].topics[2], 16);
 }
 
-async function scrapNiftyScan(token_id) {
-    await page.goto(nifty_url + token_id);
-    await page.waitForSelector('.MuiTypography-h3');
-    await page.waitForFunction(() => !document.querySelector('.MuiTypography-h3').innerHTML.includes('--'));
-    let content = await page.content();
-    let merged_to = content.split('This mass has been merged into #')[1].split('</h3>')[0]
-    let sale_price;
-    try {
-        sale_price = Number(content.split('MuiTableCell-body\"><span>$')[1].split('</span>')[0].trim().replaceAll(',', '')) / eth_usd;
-    } catch (e) { } // 🙈 Token withdrawn outside nifty then merged
+async function askOpenSea(id) {
+    let { token_metadata, last_sale } = await os_api(`asset/${contract_address}/${id}/?format=json`).json();
+    var metadata_b64 = token_metadata.split('json;base64,')[1];
+    let merged_on, sale_price;
+    if (last_sale) {
+        if (last_sale.payment_token.symbol === 'ASH')
+            sale_price = (last_sale.payment_token.eth_price * 10) * last_sale.total_price / 10e17;
+        else sale_price = last_sale.total_price / 10e17;
+        merged_on = last_sale.event_timestamp;
+    }
+    return [metadata_b64, sale_price, merged_on]
+}
 
-    return [Number(merged_to), sale_price];
+async function askNiftyMarket(id) {
+    let resp = await nifty_market_api.post('', { json: { "contractAddress": contract_address, "current": 1, "size": 1, "tokenId": id } }).json();
+
+    if (resp?.data?.results[0]?.Type != "sale") return [undefined, undefined];
+    return [resp.data.results[0].Timestamp, resp.data.results[0].SaleAmountInCents / 100 / eth_usd]
+}
+async function askNiftyMetadata(id) {
+    let resp = await nifty_metadata_api.get(`?contractAddress=${contract_address}&tokenId=${id}`).json();
+
+    let trait_values = resp.niftyMetadata.trait_values;
+    let metadata_json = {
+        attributes: [
+            { trait_type: 'Mass', value: trait_values.filter(t => t.trait.name === 'Mass')[0].trait.value },
+            { trait_type: 'Alpha', value: trait_values.filter(t => t.trait.name === 'Alpha')[0].trait.value },
+            { trait_type: 'Tier', value: trait_values.filter(t => t.trait.name === 'Tier')[0].trait.value },
+            { trait_type: 'Class', value: trait_values.filter(t => t.trait.name === 'Class')[0].trait.value },
+            { trait_type: 'Merges', value: trait_values.filter(t => t.trait.name === 'Merges')[0].trait.value }
+        ]
+    }
+
+    var metadata_b64 = Buffer.from(JSON.stringify(metadata_json)).toString("base64");
+    return metadata_b64;
 }
 
 function byte32ToString(hex) {
