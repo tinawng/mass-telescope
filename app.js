@@ -6,11 +6,13 @@ const contract_address = "0xc3f8a0f5841abff777d3eefa5047e8d413a1c9ab";
 const tanabata_api = got.extend({ prefixUrl: "https://tanabata.tina.cafe/pak/", headers: { secret: process.env.TANABATA_SECRET }, responseType: 'json', resolveBodyOnly: true });
 const web3_api = got.extend({ prefixUrl: "https://node1.web3api.com/", responseType: 'json', resolveBodyOnly: true });
 const alchemy_api = got.extend({ prefixUrl: "https://eth-mainnet.alchemyapi.io/jsonrpc/ER1Uh6Lu38x2xWXc7IomSmYFO5twNigV", responseType: 'json', resolveBodyOnly: true, retry: { limit: 10, methods: ['POST'] } });
-const os_api = got.extend({ prefixUrl: "https://api.opensea.io/api/v1/", headers: { 'X-API-KEY': process.env.OPENSEA_API_KEY }, responseType: 'json', resolveBodyOnly: true });
+const os_api = got.extend({ prefixUrl: "https://api.opensea.io/api/v1/", responseType: 'json', resolveBodyOnly: true, retry: { limit: 10, calculateDelay: ({ attemptCount }) => attemptCount * 2000 } });
 const nifty_market_api = got.extend({ prefixUrl: "https://api.niftygateway.com/market/nifty-secondary-market/", responseType: 'json', resolveBodyOnly: true, retry: { limit: 10, methods: ['POST'], calculateDelay: ({ attemptCount }) => attemptCount * 2000 } });
 const nifty_metadata_api = got.extend({ prefixUrl: "https://api.niftygateway.com/nifty/metadata-minted/", responseType: 'json', resolveBodyOnly: true, retry: { limit: 10, calculateDelay: ({ attemptCount }) => attemptCount * 2000 } });
 const cryptocompare_api = got.extend({ prefixUrl: "https://min-api.cryptocompare.com/data", responseType: 'json', resolveBodyOnly: true });
 const eth_usd = (await cryptocompare_api('price?fsym=ETH&tsyms=USD').json()).USD;
+
+Array.prototype.random = function () { return this[Math.floor((Math.random() * this.length))]; }
 
 //♻️ Already known merged token
 // const known_merged = await tanabata_api('merged_tokens');
@@ -70,10 +72,10 @@ for (let chunk = 0; chunk < 130; chunk++) {
     let tokens = await Promise.all(urls);
     console.timeEnd(`tokens   ${chunk}`);
 
-    await tanabata_api.post('merges', { json: tokens });
+    // await tanabata_api.post('merges', { json: tokens });
 }
 
-await tanabata_api.post('snap_history');
+// await tanabata_api.post('snap_history');
 console.timeEnd(`overall`);
 
 async function askAlchemy(id) {
@@ -85,7 +87,7 @@ async function askAlchemy(id) {
 }
 
 async function askOpenSea(id) {
-    let { token_metadata, last_sale } = await os_api(`asset/${contract_address}/${id}/?format=json`).json();
+    let { token_metadata, last_sale } = await os_api(`asset/${contract_address}/${id}/?format=json`, { headers: { 'X-API-KEY': process.env.OPENSEA_API_KEY.split(',').random() } }).json();
     var metadata_b64 = token_metadata.split('json;base64,')[1];
     let merged_on, sale_price;
     if (last_sale) {
