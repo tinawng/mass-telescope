@@ -3,8 +3,8 @@ import got from 'got';
 dotenv.config();
 
 const contract_address = "0xc3f8a0f5841abff777d3eefa5047e8d413a1c9ab";
-const tanabata_api = got.extend({ prefixUrl: "https://tanabata.tina.cafe/pak/", headers: { secret: process.env.TANABATA_SECRET }, responseType: 'json', resolveBodyOnly: true });
-const web3_api = got.extend({ prefixUrl: "https://node1.web3api.com/", responseType: 'json', resolveBodyOnly: true });
+const tanabata_api = got.extend({ prefixUrl: "https://tanabata.tina.cafe/pak/", headers: { secret: process.env.TANABATA_SECRET }, responseType: 'json', resolveBodyOnly: true, retry: { limit: 10, methods: ['POST'], calculateDelay: ({ attemptCount }) => attemptCount * 2000 } });
+const web3_api = got.extend({ prefixUrl: "https://node1.web3api.com/", responseType: 'json', resolveBodyOnly: true, retry: { limit: 10, methods: ['POST'], calculateDelay: ({ attemptCount }) => attemptCount * 2000 } });
 const alchemy_api = got.extend({ prefixUrl: "https://eth-mainnet.alchemyapi.io/jsonrpc/ER1Uh6Lu38x2xWXc7IomSmYFO5twNigV", responseType: 'json', resolveBodyOnly: true, retry: { limit: 10, methods: ['POST'] } });
 const os_api = got.extend({ prefixUrl: "https://api.opensea.io/api/v1/", responseType: 'json', resolveBodyOnly: true, retry: { limit: 10, calculateDelay: ({ attemptCount }) => attemptCount * 2000 } });
 const nifty_market_api = got.extend({ prefixUrl: "https://api.niftygateway.com/market/nifty-secondary-market/", responseType: 'json', resolveBodyOnly: true, retry: { limit: 10, methods: ['POST'], calculateDelay: ({ attemptCount }) => attemptCount * 2000 } });
