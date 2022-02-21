@@ -28,7 +28,7 @@ for (let chunk = 0; chunk < 130; chunk++) {
         urls.push(
             new Promise(async (resolve, reject) => {
                 let api_resp = await web3_api.post('', { json: { "jsonrpc": "2.0", "id": (223 * chunk + i), "method": "eth_call", "params": [{ "from": "0x0000000000000000000000000000000000000000", "data": b32, "to": contract_address }, "latest"] }, headers: { referer: 'etherscan.io' } }).json();
-
+                
                 let metadata_b64, merged_to, merged_on, sale_price;
                 if (api_resp.error) {
                     // 💫 This is a merged token
@@ -79,10 +79,10 @@ for (let chunk = 0; chunk < 130; chunk++) {
     let tokens = await Promise.all(urls);
     console.timeEnd(`tokens   ${chunk}`);
 
-    await tanabata_api.post('merges', { json: tokens });
+    // await tanabata_api.post('merges', { json: tokens });
 }
 
-await tanabata_api.post('snap_history');
+// await tanabata_api.post('snap_history');
 console.timeEnd(`overall`);
 
 async function askAlchemy(id) {
@@ -109,8 +109,9 @@ async function askOpenSea(id) {
 async function askNiftyMarket(id) {
     let resp = await nifty_market_api.post('', { json: { "contractAddress": contract_address, "current": 1, "size": 1, "tokenId": id } }).json();
 
-    if (resp?.data?.results[0]?.Type != "sale") return [undefined, undefined];
-    return [resp.data.results[0].Timestamp, resp.data.results[0].SaleAmountInCents / 100 / eth_usd]
+    if (resp?.data?.results[0]?.Type == "sale") return [resp.data.results[0].Timestamp, resp.data.results[0].SaleAmountInCents / 100 / eth_usd];
+    if (resp?.data?.results[0]?.Type == "nifty_transfer") return [resp.data.results[0].Timestamp, undefined];
+    return [undefined, undefined]
 }
 async function askNiftyMetadata(id) {
     let { niftyMetadata } = await nifty_metadata_api.get(`?contractAddress=${contract_address}&tokenId=${id}`).json();

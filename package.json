@@ -1,6 +1,6 @@
 {
   "name": "mass-telescope",
-  "version": "4.2.1",
+  "version": "4.2.2",
   "main": "app.js",
   "type": "module",
   "homepage": "https://github.com/tinawng/mass-telescope#readme",
