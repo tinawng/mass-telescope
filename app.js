@@ -79,10 +79,10 @@ for (let chunk = 0; chunk < 130; chunk++) {
     let tokens = await Promise.all(urls);
     console.timeEnd(`tokens   ${chunk}`);
 
-    // await tanabata_api.post('merges', { json: tokens });
+    await tanabata_api.post('merges', { json: tokens });
 }
 
-// await tanabata_api.post('snap_history');
+await tanabata_api.post('snap_history');
 console.timeEnd(`overall`);
 
 async function askAlchemy(id) {
