@@ -1,152 +1,173 @@
-import dotenv from 'dotenv'
-import got from 'got';
-dotenv.config();
+import 'dotenv/config'
+import got from 'got'
+import PocketBaseInterface from './pocketbase-interface.js'
 
-const contract_address = "0xc3f8a0f5841abff777d3eefa5047e8d413a1c9ab";
-const tanabata_api = got.extend({ prefixUrl: "https://tanabata.tina.cafe/merge/", headers: { 'X-API-KEY': process.env.TANABATA_API_KEY }, responseType: 'json', resolveBodyOnly: true });
-const web3_api = got.extend({ prefixUrl: "https://node1.web3api.com/", responseType: 'json', resolveBodyOnly: true, retry: { limit: 10, methods: ['POST'], calculateDelay: ({ attemptCount }) => attemptCount * 2000 } });
-const alchemy_api = got.extend({ prefixUrl: "https://eth-mainnet.alchemyapi.io/jsonrpc/ER1Uh6Lu38x2xWXc7IomSmYFO5twNigV", responseType: 'json', resolveBodyOnly: true, retry: { limit: 10, methods: ['POST'] } });
-const os_api = got.extend({ prefixUrl: "https://api.opensea.io/api/v1/", responseType: 'json', resolveBodyOnly: true, retry: { limit: 10, calculateDelay: ({ attemptCount }) => attemptCount * 2000 } });
-const nifty_market_api = got.extend({ prefixUrl: "https://api.niftygateway.com/market/nifty-secondary-market/", responseType: 'json', resolveBodyOnly: true, retry: { limit: 10, methods: ['POST'], calculateDelay: ({ attemptCount }) => attemptCount * 2000 } });
-const nifty_metadata_api = got.extend({ prefixUrl: "https://api.niftygateway.com/nifty/metadata-minted/", responseType: 'json', resolveBodyOnly: true, retry: { limit: 10, calculateDelay: ({ attemptCount }) => attemptCount * 2000 } });
-const cryptocompare_api = got.extend({ prefixUrl: "https://min-api.cryptocompare.com/data", responseType: 'json', resolveBodyOnly: true });
-const eth_usd = (await cryptocompare_api('price?fsym=ETH&tsyms=USD').json()).USD;
+const $db_mass = new PocketBaseInterface('merge_mass_tokens')
+const $db_matter = new PocketBaseInterface('merge_matter_tokens')
 
-Array.prototype.random = function () { return this[Math.floor((Math.random() * this.length))]; }
+const MASS_CONTRACT_ADDRESS = "0xc3f8a0f5841abff777d3eefa5047e8d413a1c9ab"
+const MASS_TOKENS = 28990
+const MATTER_CONTRACT_ADDRESS = "0x9ad00312bb2a67fffba0caab452e1a0559a41a9e"
+const MATTER_TOKENS = 1395
 
-//♻️ Already known merged token
-const known_merged = await tanabata_api('merged_tokens');
+const eth_api = got.extend({ prefixUrl: "https://tanabata.tina.cafe/eth/", headers: { 'X-API-KEY': process.env.TANABATA_API_KEY }, retry: { limit: 10 }, responseType: 'json', resolveBodyOnly: true })
+const alchemy_api = got.extend({ prefixUrl: "https://eth-mainnet.alchemyapi.io/jsonrpc/ER1Uh6Lu38x2xWXc7IomSmYFO5twNigV", responseType: 'json', resolveBodyOnly: true, retry: { methods: ['POST'] } })
+const nifty_metadata_api = got.extend({ prefixUrl: "https://api.niftygateway.com/nifty/metadata-minted/", responseType: 'json', resolveBodyOnly: true })
+const os_api = got.extend({ prefixUrl: "https://api.opensea.io/api/v1/", headers: { 'X-API-KEY': process.env.OPENSEA_API_KEY }, responseType: 'json', resolveBodyOnly: true })
+const nifty_market_api = got.extend({ prefixUrl: "https://api.niftygateway.com/market/nifty-secondary-market/", responseType: 'json', resolveBodyOnly: true })
+const ipfs_api = got.extend({ prefixUrl: "https://cloudflare-ipfs.com/ipfs/", responseType: 'json', resolveBodyOnly: true, retry: { limit: 10 } })
+const coinbase_api = got.extend({ prefixUrl: "https://api.coinbase.com/v2/", responseType: 'json', resolveBodyOnly: true })
+const eth_usd = +(await coinbase_api('exchange-rates?currency=ETH')).data.rates.USD
+const known_merged = (await $db_mass.getFullList({ filter: "merged = true", keys: "id" })).map(r => +r.id)
 
-console.time(`overall`);
-// ⚫️ Parsing all tokens: 130 * 223 = 28,990
-for (let chunk = 0; chunk < 223; chunk++) {
-    // ⚡️ Making url list for // request exec
-    let urls = [];
-    for (let i = 1; i <= 130; i++) {
-        let hex = (130 * chunk + i).toString(16);
-        let b32 = '0xc87b56dd' + hex.padStart(64, '0');
-        urls.push(
-            new Promise(async (resolve, reject) => {
-                let api_resp = await web3_api.post('', { json: { "jsonrpc": "2.0", "id": (130 * chunk + i), "method": "eth_call", "params": [{ "from": "0x0000000000000000000000000000000000000000", "data": b32, "to": contract_address }, "latest"] }, headers: { referer: 'etherscan.io' } }).json();
+console.time(`overall`)
+const REQUESTS = []
+const batch_size = 100
 
-                let metadata_b64, merged_to, merged_on, sale_price;
-                if (api_resp.error) {
-                    // 💫 This is a merged token
-                    if (known_merged.find(token => token.id === api_resp.id)) {
-                        // ⚡ Merged token's metadata wont change, re-using previous record
-                        [metadata_b64, merged_to, merged_on, sale_price] = await askTanabata(api_resp.id)
-                    }
-                    else {
-                        // 💥 This is a new merged token
-                        merged_to = await askAlchemy(api_resp.id);
+for (let id = 1; id <= MATTER_TOKENS; id++) REQUESTS.push({ id, f: scanMatterToken })
+for (let id = 1; id <= MASS_TOKENS; id++) REQUESTS.push({ id, f: scanMassToken })
+while (REQUESTS.length) {
+    console.log('stack length: ', REQUESTS.length)
+    console.time(`token batch`)
+    await Promise.all(REQUESTS.splice(0, batch_size).map((o) => o.f(o.id)))
+    console.timeEnd(`token batch`)
+}
+console.timeEnd(`overall`)
 
-                        if (merged_to) {
-                            [metadata_b64, sale_price, merged_on] = await askOpenSea(api_resp.id);
-                            if (!sale_price)
-                                sale_price = await askNiftyMarket(api_resp.id);
-                        }
-                        else {
-                            // 🌱  merged_to is undefined, token has been merged before the re-mint
-                            metadata_b64 = await askNiftyMetadata(api_resp.id);
-                        }
-                    }
-                }
-                else
-                    metadata_b64 = byte32ToString(api_resp.result).split('json;base64,')[1];
 
-                var metadata = JSON.parse(Buffer.from(metadata_b64, 'base64').toString());
 
-                let token = {
-                    id: api_resp.id,
-                    mass: metadata?.attributes.filter(a => a.trait_type === 'Mass')[0].value,
-                    alpha: metadata?.attributes.filter(a => a.trait_type === 'Alpha')[0].value,
-                    tier: metadata?.attributes.filter(a => a.trait_type === 'Tier')[0].value,
-                    class: metadata?.attributes.filter(a => a.trait_type === 'Class')[0].value,
-                    merges: metadata?.attributes.filter(a => a.trait_type === 'Merges')[0].value,
-                    merged: !!api_resp.error,
-                    merged_to: merged_to,
-                    merged_on: merged_on,
-                    sale_price: sale_price,
-                }
+// 🔭 Scan functions
+async function scanMassToken(id) {
+    if (known_merged.includes(id)) return
 
-                resolve(token);
-            })
-        );
+    let attributes, merged = false, merged_to, merged_on, sale_price
+
+    attributes = await askWeb3ApiNode(MASS_CONTRACT_ADDRESS, id)
+    if (!attributes) {
+        // 💫 This is a merged token
+        merged = true
+        attributes = await askNiftyMetadata(MASS_CONTRACT_ADDRESS, id);
+        [merged_to, merged_on] = await askAlchemy(id)
+
+        sale_price = await askOpenSeaPrice(id)
+        if (!sale_price) sale_price = await askNiftyMarket(id)
     }
 
-    // 🗃️ Store api responses
-    console.time(`tokens   ${chunk}`);
-    let tokens = await Promise.all(urls);
-    console.timeEnd(`tokens   ${chunk}`);
+    const data = {
+        id: id.toString().padStart(15, 0),
+        mass: +attributes.filter(a => a.trait_type === 'Mass')[0].value,
+        alpha: attributes.filter(a => a.trait_type === 'Alpha')[0].value == 1,
+        tier: +attributes.filter(a => a.trait_type === 'Tier')[0].value,
+        class: +attributes.filter(a => a.trait_type === 'Class')[0].value,
+        merges: +attributes.filter(a => a.trait_type === 'Merges')[0].value,
+        merged,
+        merged_to: merged_to?.toString().padStart(15, 0),
+        merged_on,
+        sale_price,
+    }
 
-    await tanabata_api.put('merge_tokens', { json: tokens });
+    await $db_mass.update(data.id, data)
 }
 
-await tanabata_api.post('snap_history');
-console.timeEnd(`overall`);
+async function scanMatterToken(id) {
+    let attributes = await askWeb3ApiNode(MATTER_CONTRACT_ADDRESS, id)
+    if (!attributes) attributes = await askOpenSeaMetadata(MATTER_CONTRACT_ADDRESS, id);
+
+    // 💡 0 is for the 3 Lucky Giants which don't really have parents
+    if (attributes.filter(a => a.trait_type === 'Parent')[0].value == 0)
+        attributes.filter(a => a.trait_type === 'Parent')[0].value = undefined
+
+    const data = {
+        mass: +attributes.filter(a => a.trait_type === 'Mass')[0].value,
+        order: +attributes.filter(a => a.trait_type === 'Order')[0].value,
+        parent: attributes.filter(a => a.trait_type === 'Parent')[0].value?.toString().padStart(15, 0),
+        type: attributes.filter(a => a.trait_type === 'Type')[0].value
+    };
+
+    await $db_matter.update(id, data)
+}
+
+
+
+// 🛠️ Utils functions
+async function askWeb3ApiNode(contract_address, id) {
+    const hex = id.toString(16)
+    const b32 = '0xc87b56dd' + hex.padStart(64, '0')
+    const resp = await got('https://node1.web3api.com/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', referer: 'etherscan.io' },
+        body: `{"jsonrpc":"2.0","id":${id},"method":"eth_call","params":[{"from":"0x0000000000000000000000000000000000000000","data":"${b32}","to":"${contract_address}"},"latest"]}`,
+        responseType: 'json', resolveBodyOnly: true,
+        retry: { methods: ['POST'], statusCodes: [520], errorCodes: ['ENOBUFS', 'ECONNRESET'] }
+    })
+
+    if (resp.error) return undefined
+
+    const uri = byte32ToString(resp.result)
+    if (uri.includes('json;base64,')) {
+        const metadata_b64 = uri.split('json;base64,')[1]
+        const metadata = JSON.parse(Buffer.from(metadata_b64, 'base64').toString())
+        return metadata.attributes
+    }
+    else if (uri.includes('ipfs')) {
+        const metadata = await ipfs_api(uri.split('ipfs://')[1])
+        return metadata.attributes
+    }
+    return undefined
+}
 
 async function askAlchemy(id) {
-    let id_hex = '0x' + id.toString(16).padStart(64, '0');
-    let resp = await alchemy_api.post('', { json: { "jsonrpc": "2.0", "id": 20, "method": "eth_getLogs", "params": [{ "fromBlock": "0x0", "toBlock": "latest", "topics": ["0x7ba170514e8ea35827dbbd10c6d3376ca77ff64b62e4b0a395bac9b142dc81dc", [id_hex], null], "address": contract_address }] } }).json();
+    const id_hex = '0x' + id.toString(16).padStart(64, '0')
+    const resp = await alchemy_api.post('', { json: { "jsonrpc": "2.0", "id": 20, "method": "eth_getLogs", "params": [{ "fromBlock": "0x0", "toBlock": "latest", "topics": ["0x7ba170514e8ea35827dbbd10c6d3376ca77ff64b62e4b0a395bac9b142dc81dc", [id_hex], null], "address": MASS_CONTRACT_ADDRESS }] } })
 
-    if (resp?.result.length == 0) return undefined;
-    return parseInt(resp.result[0].topics[2], 16);
+    if (resp?.result.length == 0) {
+        console.log("alchemy error on", id);
+        return [undefined, undefined]
+    }
+
+    const merged_to = parseInt(resp.result[0].topics[2], 16) ? parseInt(resp.result[0].topics[2], 16) : undefined // 🥅 Change 0 to undefined (for $db relation reason)
+    const merged_on = (await eth_api.get(`chain/block?block_id=${Number(resp.result[0].blockNumber, 16)}`)).timestamp * 1000
+
+
+    return [merged_to, new Date(merged_on).toUTCString()]
 }
 
-async function askOpenSea(id) {
-    let { token_metadata, last_sale } = await os_api(`asset/${contract_address}/${id}/?format=json`, { headers: { 'X-API-KEY': process.env.OPENSEA_API_KEY.split(',').random() } }).json();
-    var metadata_b64 = token_metadata.split('json;base64,')[1];
-    let merged_on, sale_price;
-    if (last_sale) {
-        if (last_sale.payment_token?.symbol === 'ASH')
-            sale_price = (last_sale.payment_token.eth_price * 10) * last_sale.total_price / 10e17;
-        else sale_price = last_sale.total_price / 10e17;
-    }
-    let resp = await os_api(`events?only_opensea=false&token_id=${id}&asset_contract_address=${contract_address}&event_type=transfer`, { headers: { 'X-API-KEY': process.env.OPENSEA_API_KEY.split(',')[1] } }).json();
-    merged_on = resp?.asset_events[0]?.created_date;
+async function askNiftyMetadata(contract_address, id) {
+    const { niftyMetadata } = await nifty_metadata_api.get(`?contractAddress=${contract_address}&tokenId=${id}`)
 
-    return [metadata_b64, sale_price, merged_on]
+    return [
+        { trait_type: 'Mass', value: +niftyMetadata.description },
+        { trait_type: 'Alpha', value: niftyMetadata.trait_values.filter(a => a.trait.name === 'Alpha')[0].value == 1 },
+        { trait_type: 'Tier', value: +niftyMetadata.trait_values.filter(a => a.trait.name === 'Tier')[0].value },
+        { trait_type: 'Class', value: +niftyMetadata.trait_values.filter(a => a.trait.name === 'Class')[0].value },
+        { trait_type: 'Merges', value: +niftyMetadata.trait_values.filter(a => a.trait.name === 'Merges')[0].value }
+    ]
+}
+
+async function askOpenSeaMetadata(contract_address, id) {
+    const { traits } = await os_api(`asset/${contract_address}/${id}/?format=json`)
+    return traits
+}
+async function askOpenSeaPrice(id) {
+    let sale_price;
+    try {
+        const { last_sale } = await os_api(`asset/${MASS_CONTRACT_ADDRESS}/${id}/?format=json`)
+
+        if (last_sale) {
+            if (last_sale.payment_token?.symbol === 'ASH')
+                sale_price = (last_sale.payment_token.eth_price * 10) * last_sale.total_price / 10e17;
+            else sale_price = last_sale.total_price / 10e17;
+        }
+    } catch (_) { }
+
+    return sale_price
 }
 
 async function askNiftyMarket(id) {
-    let resp = await nifty_market_api.post('', { json: { "contractAddress": contract_address, "current": 1, "size": 1, "tokenId": id } }).json();
+    let resp = await nifty_market_api.post('', { json: { "contractAddress": MASS_CONTRACT_ADDRESS, "current": 1, "size": 1, "tokenId": id } })
 
-    if (resp?.data?.results[0]?.Type == "sale") return resp.data.results[0].SaleAmountInCents / 100 / eth_usd;
+    if (resp?.data?.results[0]?.Type == "sale") return resp.data.results[0].SaleAmountInCents / 100 / eth_usd
     return undefined
-}
-async function askNiftyMetadata(id) {
-    let { niftyMetadata } = await nifty_metadata_api.get(`?contractAddress=${contract_address}&tokenId=${id}`).json();
-
-    let trait_values = niftyMetadata.trait_values;
-    let metadata_json = {
-        attributes: [
-            { trait_type: 'Mass', value: Number(niftyMetadata.description) },
-            { trait_type: 'Alpha', value: Number(trait_values[4].value) },
-            { trait_type: 'Tier', value: Number(trait_values[3].value) },
-            { trait_type: 'Class', value: Number(trait_values[2].value) },
-            { trait_type: 'Merges', value: Number(trait_values[1].value) }
-        ]
-    }
-
-    var metadata_b64 = Buffer.from(JSON.stringify(metadata_json)).toString("base64");
-    return metadata_b64;
-}
-
-async function askTanabata(id) {
-    let token = known_merged.find(token => token.id === id)
-
-    let json = {
-        attributes: [
-            { trait_type: 'Mass', value: token.mass },
-            { trait_type: 'Alpha', value: token.alpha },
-            { trait_type: 'Tier', value: token.tier },
-            { trait_type: 'Class', value: token.class },
-            { trait_type: 'Merges', value: token.merges }
-        ]
-    }
-
-    let b64json = Buffer.from(JSON.stringify(json)).toString("base64");
-    return [b64json, token.merged_to, token.merged_on, token.sale_price]
 }
 
 function byte32ToString(hex) {
