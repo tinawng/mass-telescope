@@ -4,6 +4,8 @@ import PocketBaseInterface from './pocketbase-interface.js'
 
 const $db_mass = new PocketBaseInterface('merge_mass_tokens')
 const $db_matter = new PocketBaseInterface('merge_matter_tokens')
+await $db_mass.auth(process.env.POCKETBASE_USER, process.env.POCKETBASE_PASSWORD)
+await $db_matter.auth(process.env.POCKETBASE_USER, process.env.POCKETBASE_PASSWORD)
 
 const MASS_CONTRACT_ADDRESS = "0xc3f8a0f5841abff777d3eefa5047e8d413a1c9ab"
 const MASS_TOKENS = 28990
