@@ -3,8 +3,10 @@ import got from 'got'
 import PocketBaseInterface from './pocketbase-interface.js'
 
 const $db_mass = new PocketBaseInterface('merge_mass_tokens')
+const $db_merge_history = new PocketBaseInterface('merge_history')
 const $db_matter = new PocketBaseInterface('merge_matter_tokens')
 await $db_mass.auth(process.env.POCKETBASE_USER, process.env.POCKETBASE_PASSWORD)
+await $db_merge_history.auth(process.env.POCKETBASE_USER, process.env.POCKETBASE_PASSWORD)
 await $db_matter.auth(process.env.POCKETBASE_USER, process.env.POCKETBASE_PASSWORD)
 
 const MASS_CONTRACT_ADDRESS = "0xc3f8a0f5841abff777d3eefa5047e8d413a1c9ab"
@@ -12,7 +14,7 @@ const MASS_TOKENS = 28990
 const MATTER_CONTRACT_ADDRESS = "0x9ad00312bb2a67fffba0caab452e1a0559a41a9e"
 const MATTER_TOKENS = 1395
 
-const eth_api = got.extend({ prefixUrl: "https://tanabata.tina.cafe/eth/", headers: { 'X-API-KEY': process.env.TANABATA_API_KEY }, retry: { limit: 10 }, responseType: 'json', resolveBodyOnly: true })
+const tanabata = got.extend({ prefixUrl: "https://tanabata.tina.cafe/", headers: { 'X-API-KEY': process.env.TANABATA_API_KEY }, retry: { limit: 10 }, responseType: 'json', resolveBodyOnly: true })
 const alchemy_api = got.extend({ prefixUrl: "https://eth-mainnet.alchemyapi.io/jsonrpc/ER1Uh6Lu38x2xWXc7IomSmYFO5twNigV", responseType: 'json', resolveBodyOnly: true, retry: { methods: ['POST'] } })
 const nifty_metadata_api = got.extend({ prefixUrl: "https://api.niftygateway.com/nifty/metadata-minted/", responseType: 'json', resolveBodyOnly: true })
 const os_api = got.extend({ prefixUrl: "https://api.opensea.io/api/v1/", headers: { 'X-API-KEY': process.env.OPENSEA_API_KEY }, responseType: 'json', resolveBodyOnly: true })
@@ -34,6 +36,27 @@ while (REQUESTS.length) {
     await Promise.all(REQUESTS.splice(0, batch_size).map((o) => o.f(o.id)))
     console.timeEnd(`token batch`)
 }
+
+// 📝 Save some stats for history
+let os_resp = await os_api.get("collection/m/stats")
+const token_count = await $db_mass.getCount("merged = false")
+const merged_count = await $db_mass.getCount("merged = true")
+let tiers_count = [], classes_count = []
+for (let it = 1; it <= 4; it++) tiers_count.push($db_mass.getCount(`tier = ${it} && merged = false`))
+tiers_count = await Promise.all(tiers_count)
+for (let ic = 0; ic < 100; ic++) classes_count.push($db_mass.getCount(`class = ${ic} && merged = false`))
+classes_count = await Promise.all(classes_count)
+
+await $db_merge_history.create({
+    os_price_floor: os_resp.stats.floor_price,
+    token_count,
+    merged_count,
+    tiers_count,
+    classes_count,
+    total_mass: 312729
+})
+await tanabata.post('merge/clear_cache')
+
 console.timeEnd(`overall`)
 
 
@@ -128,7 +151,7 @@ async function askAlchemy(id) {
     }
 
     const merged_to = parseInt(resp.result[0].topics[2], 16) ? parseInt(resp.result[0].topics[2], 16) : undefined // 🥅 Change 0 to undefined (for $db relation reason)
-    const merged_on = (await eth_api.get(`chain/block?block_id=${Number(resp.result[0].blockNumber, 16)}`)).timestamp * 1000
+    const merged_on = (await tanabata.get(`eth/chain/block?block_id=${Number(resp.result[0].blockNumber, 16)}`)).timestamp * 1000
 
 
     return [merged_to, new Date(merged_on).toUTCString()]
