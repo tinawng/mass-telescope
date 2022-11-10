@@ -17,7 +17,7 @@ const MATTER_TOKENS = 1395
 const tanabata = got.extend({ prefixUrl: "https://tanabata.tina.cafe/", headers: { 'X-API-KEY': process.env.TANABATA_API_KEY }, retry: { limit: 10 }, responseType: 'json', resolveBodyOnly: true })
 const alchemy_api = got.extend({ prefixUrl: "https://eth-mainnet.alchemyapi.io/jsonrpc/ER1Uh6Lu38x2xWXc7IomSmYFO5twNigV", responseType: 'json', resolveBodyOnly: true, retry: { methods: ['POST'] } })
 const nifty_metadata_api = got.extend({ prefixUrl: "https://api.niftygateway.com/nifty/metadata-minted/", responseType: 'json', resolveBodyOnly: true })
-const os_api = got.extend({ prefixUrl: "https://api.opensea.io/api/v1/", headers: { 'X-API-KEY': process.env.OPENSEA_API_KEY }, responseType: 'json', resolveBodyOnly: true })
+const os_api = got.extend({ prefixUrl: "https://api.opensea.io/api/v1/", responseType: 'json', resolveBodyOnly: true })
 const nifty_market_api = got.extend({ prefixUrl: "https://api.niftygateway.com/market/nifty-secondary-market/", responseType: 'json', resolveBodyOnly: true })
 const ipfs_api = got.extend({ prefixUrl: "https://cloudflare-ipfs.com/ipfs/", responseType: 'json', resolveBodyOnly: true, retry: { limit: 10 } })
 const coinbase_api = got.extend({ prefixUrl: "https://api.coinbase.com/v2/", responseType: 'json', resolveBodyOnly: true })
@@ -53,7 +53,8 @@ await $db_merge_history.create({
     merged_count,
     tiers_count,
     classes_count,
-    total_mass: 312729
+    total_mass: 312729,
+    timestamp: (new Date).toISOString()
 })
 await tanabata.post('merge/clear_cache')
 
@@ -96,7 +97,8 @@ async function scanMassToken(id) {
 
 async function scanMatterToken(id) {
     let attributes = await askWeb3ApiNode(MATTER_CONTRACT_ADDRESS, id)
-    if (!attributes) attributes = await askOpenSeaMetadata(MATTER_CONTRACT_ADDRESS, id);
+    // if (!attributes) attributes = await askOpenSeaMetadata(MATTER_CONTRACT_ADDRESS, id);
+    if (!attributes) return // 🥅 Ignore burnt Matter
 
     // 💡 0 is for the 3 Lucky Giants which don't really have parents
     if (attributes.filter(a => a.trait_type === 'Parent')[0].value == 0)
