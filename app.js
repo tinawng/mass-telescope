@@ -24,13 +24,12 @@ const coinbase_api = got.extend({ prefixUrl: "https://api.coinbase.com/v2/", res
 const eth_usd = +(await coinbase_api('exchange-rates?currency=ETH')).data.rates.USD
 const known_merged = (await $db_mass.getFullList({ filter: "merged = true", keys: "id" })).map(r => +r.id)
 const all_mass_tokens = (await $db_mass.getFullList({ keys: "id mass alpha tier class merges merged merged_to merged_on sale_price" }))
-await scanMassToken(28989)
 
 console.time(`overall`)
 const REQUESTS = []
 const batch_size = 100
 
-// for (let id = 1; id <= MATTER_TOKENS; id++) REQUESTS.push({ id, f: scanMatterToken })
+for (let id = 1; id <= MATTER_TOKENS; id++) REQUESTS.push({ id, f: scanMatterToken })
 for (let id = 1; id <= MASS_TOKENS; id++) REQUESTS.push({ id, f: scanMassToken })
 while (REQUESTS.length) {
     console.log('stack length: ', REQUESTS.length)
