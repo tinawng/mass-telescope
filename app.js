@@ -18,7 +18,6 @@ const tanabata = got.extend({ prefixUrl: "https://tanabata.tina.cafe/", headers:
 const alchemy_api = got.extend({ prefixUrl: "https://eth-mainnet.alchemyapi.io/jsonrpc/ER1Uh6Lu38x2xWXc7IomSmYFO5twNigV", responseType: 'json', resolveBodyOnly: true, retry: { methods: ['POST'] } })
 const nifty_metadata_api = got.extend({ prefixUrl: "https://api.niftygateway.com/nifty/metadata-minted/", responseType: 'json', resolveBodyOnly: true })
 const os_api = got.extend({ prefixUrl: "https://api.opensea.io/api/v1/", responseType: 'json', resolveBodyOnly: true })
-const nifty_market_api = got.extend({ prefixUrl: "https://api.niftygateway.com/market/nifty-secondary-market/", responseType: 'json', resolveBodyOnly: true })
 const ipfs_api = got.extend({ prefixUrl: "https://cloudflare-ipfs.com/ipfs/", responseType: 'json', resolveBodyOnly: true, retry: { limit: 10 } })
 const coinbase_api = got.extend({ prefixUrl: "https://api.coinbase.com/v2/", responseType: 'json', resolveBodyOnly: true })
 const eth_usd = +(await coinbase_api('exchange-rates?currency=ETH')).data.rates.USD
@@ -73,13 +72,20 @@ async function scanMassToken(id) {
     if (!attributes) {
         // 💫 This is a merged token
         merged = true
-        attributes = await askNiftyMetadata(MASS_CONTRACT_ADDRESS, id);
-        [merged_to, merged_on] = await askAlchemy(id)
+        const db_token = await $db_mass.getOne(id)
+        attributes = [
+            { trait_type: 'Mass', value: db_token.mass },
+            { trait_type: 'Alpha', value: db_token.alpha },
+            { trait_type: 'Tier', value: db_token.tier },
+            { trait_type: 'Class', value: db_token.class },
+            { trait_type: 'Merges', value: db_token.merges }
+        ];
+        ([merged_to, merged_on] = await askAlchemy(id))
 
         sale_price = await askOpenSeaPrice(id)
-        if (!sale_price) sale_price = await askNiftyMarket(id)
+        // if (!sale_price) sale_price = await askNiftyMarket(id)
     }
-
+    
     const data = {
         id: id.toString().padStart(15, 0),
         mass: +attributes.filter(a => a.trait_type === 'Mass')[0].value,
@@ -179,10 +185,6 @@ async function askNiftyMetadata(contract_address, id) {
     ]
 }
 
-async function askOpenSeaMetadata(contract_address, id) {
-    const { traits } = await os_api(`asset/${contract_address}/${id}/?format=json`)
-    return traits
-}
 async function askOpenSeaPrice(id) {
     let sale_price;
     try {
@@ -196,13 +198,6 @@ async function askOpenSeaPrice(id) {
     } catch (_) { }
 
     return sale_price
-}
-
-async function askNiftyMarket(id) {
-    let resp = await nifty_market_api.post('', { json: { "contractAddress": MASS_CONTRACT_ADDRESS, "current": 1, "size": 1, "tokenId": id } })
-
-    if (resp?.data?.results[0]?.Type == "sale") return resp.data.results[0].SaleAmountInCents / 100 / eth_usd
-    return undefined
 }
 
 function byte32ToString(hex) {
