@@ -53,7 +53,7 @@ await $db_merge_history.create({
     merged_count,
     tiers_count,
     classes_count,
-    total_mass: 312729,
+    total_mass: 312727,
     timestamp: (new Date).toISOString()
 })
 await tanabata.post('merge/clear_cache')
