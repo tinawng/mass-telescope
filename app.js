@@ -15,8 +15,8 @@ const MATTER_CONTRACT_ADDRESS = "0x9ad00312bb2a67fffba0caab452e1a0559a41a9e"
 const MATTER_TOKENS = 1395
 
 const tanabata = got.extend({ prefixUrl: "https://tanabata.tina.cafe/", headers: { 'X-API-KEY': process.env.TANABATA_API_KEY }, retry: { limit: 10 }, responseType: 'json', resolveBodyOnly: true })
-const alchemy_api = got.extend({ prefixUrl: "https://eth-mainnet.alchemyapi.io/jsonrpc/ER1Uh6Lu38x2xWXc7IomSmYFO5twNigV", responseType: 'json', resolveBodyOnly: true, retry: { methods: ['POST'] } })
-const nifty_metadata_api = got.extend({ prefixUrl: "https://api.niftygateway.com/nifty/metadata-minted/", responseType: 'json', resolveBodyOnly: true })
+const alchemy_api = got.extend({ prefixUrl: `https://eth-mainnet.alchemyapi.io/jsonrpc/${process.env.ALCHEMY_API_KEY_A}`, responseType: 'json', resolveBodyOnly: true, retry: { methods: ['POST'] } })
+const alchemy_public_api = got.extend({ prefixUrl: `https://eth-mainnet.g.alchemy.com/nft/v2/${process.env.ALCHEMY_API_KEY_B}/`, responseType: 'json', resolveBodyOnly: true })
 const os_api = got.extend({ prefixUrl: "https://api.opensea.io/api/v1/", responseType: 'json', resolveBodyOnly: true })
 const ipfs_api = got.extend({ prefixUrl: "https://cloudflare-ipfs.com/ipfs/", responseType: 'json', resolveBodyOnly: true, retry: { limit: 10 } })
 const coinbase_api = got.extend({ prefixUrl: "https://api.coinbase.com/v2/", responseType: 'json', resolveBodyOnly: true })
@@ -72,13 +72,16 @@ async function scanMassToken(id) {
     if (!attributes) {
         // 💫 This is a merged token
         merged = true
+
+        const alchemy_metadatas = await askAlchemyMetadata(MASS_CONTRACT_ADDRESS, id)
         const db_token = await $db_mass.getOne(id)
+
         attributes = [
-            { trait_type: 'Mass', value: db_token.mass },
+            { trait_type: 'Mass', value: alchemy_metadatas?.mass || db_token.mass },
             { trait_type: 'Alpha', value: db_token.alpha },
             { trait_type: 'Tier', value: db_token.tier },
             { trait_type: 'Class', value: db_token.class },
-            { trait_type: 'Merges', value: db_token.merges }
+            { trait_type: 'Merges', value: alchemy_metadatas?.merges || db_token.merges }
         ];
         ([merged_to, merged_on] = await askAlchemy(id))
 
@@ -169,20 +172,14 @@ async function askAlchemy(id) {
     const merged_to = parseInt(resp.result[0].topics[2], 16) ? parseInt(resp.result[0].topics[2], 16) : undefined // 🥅 Change 0 to undefined (for $db relation reason)
     const merged_on = (await tanabata.get(`eth/chain/block?block_id=${Number(resp.result[0].blockNumber, 16)}`)).timestamp * 1000
 
-
     return [merged_to, new Date(merged_on).toUTCString()]
 }
 
-async function askNiftyMetadata(contract_address, id) {
-    const { niftyMetadata } = await nifty_metadata_api.get(`?contractAddress=${contract_address}&tokenId=${id}`)
-
-    return [
-        { trait_type: 'Mass', value: +niftyMetadata.description },
-        { trait_type: 'Alpha', value: niftyMetadata.trait_values.filter(a => a.trait.name === 'Alpha')[0].value == 1 },
-        { trait_type: 'Tier', value: +niftyMetadata.trait_values.filter(a => a.trait.name === 'Tier')[0].value },
-        { trait_type: 'Class', value: +niftyMetadata.trait_values.filter(a => a.trait.name === 'Class')[0].value },
-        { trait_type: 'Merges', value: +niftyMetadata.trait_values.filter(a => a.trait.name === 'Merges')[0].value }
-    ]
+async function askAlchemyMetadata(contract, id) {
+    try {
+        const resp = await alchemy_public_api.get(`getNFTMetadata?contractAddress=${contract}&tokenId=${id}&tokenType=ERC721&refreshCache=false`)
+        return { mass: resp.metadata.attributes.find(a => a.trait_type === 'Mass').value, merges: resp.metadata.attributes.find(a => a.trait_type === 'Merges').value }
+    } catch (e) { return { mass: undefined, merges: undefined} }
 }
 
 async function askOpenSeaPrice(id) {
