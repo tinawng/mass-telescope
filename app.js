@@ -15,6 +15,7 @@ const MATTER_CONTRACT_ADDRESS = "0x9ad00312bb2a67fffba0caab452e1a0559a41a9e"
 const MATTER_TOKENS = 1395
 
 const tanabata = got.extend({ prefixUrl: "https://tanabata.tina.cafe/", headers: { 'X-API-KEY': process.env.TANABATA_API_KEY }, retry: { limit: 10 }, responseType: 'json', resolveBodyOnly: true })
+const cache_proxy = got.extend({ prefixUrl: "https://torii.tina.cafe/", headers: { 'X-API-KEY': process.env.CACHE_PROXY_SHARED_KEY } })
 const alchemy_api = got.extend({ prefixUrl: `https://eth-mainnet.alchemyapi.io/jsonrpc/${process.env.ALCHEMY_API_KEY_A}`, responseType: 'json', resolveBodyOnly: true, retry: { methods: ['POST'] } })
 const alchemy_public_api = got.extend({ prefixUrl: `https://eth-mainnet.g.alchemy.com/nft/v2/${process.env.ALCHEMY_API_KEY_B}/`, responseType: 'json', resolveBodyOnly: true })
 const os_api = got.extend({ prefixUrl: "https://api.opensea.io/api/v1/", responseType: 'json', resolveBodyOnly: true })
@@ -38,7 +39,7 @@ while (REQUESTS.length) {
 }
 
 // 📝 Save some stats for history
-let os_resp = await os_api.get("collection/m/stats")
+//let os_resp = await os_api.get("collection/m/stats")
 const token_count = await $db_mass.getCount("merged = false")
 const merged_count = await $db_mass.getCount("merged = true")
 let tiers_count = [], classes_count = []
@@ -48,7 +49,8 @@ for (let ic = 0; ic < 100; ic++) classes_count.push($db_mass.getCount(`class = $
 classes_count = await Promise.all(classes_count)
 
 await $db_merge_history.create({
-    os_price_floor: os_resp.stats.floor_price,
+//    os_price_floor: os_resp.stats.floor_price,
+    os_price_floor: 0.0568,
     token_count,
     merged_count,
     tiers_count,
@@ -56,7 +58,8 @@ await $db_merge_history.create({
     total_mass: 312727,
     timestamp: (new Date).toISOString()
 })
-await tanabata.post('merge/clear_cache')
+
+await cache_proxy.delete('https://tanabata.tina.cafe/merge')
 
 console.timeEnd(`overall`)
 
@@ -88,7 +91,7 @@ async function scanMassToken(id) {
         sale_price = await askOpenSeaPrice(id)
         // if (!sale_price) sale_price = await askNiftyMarket(id)
     }
-    
+
     const data = {
         id: id.toString().padStart(15, 0),
         mass: +attributes.filter(a => a.trait_type === 'Mass')[0].value,
